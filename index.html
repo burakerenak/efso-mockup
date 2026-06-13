@@ -220,6 +220,8 @@
   .acctog button.on{background:var(--efso,#0ea5e9);color:#fff;border-color:transparent}
   .acctog .hint{font-size:11.5px;color:var(--muted)}
   .candrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;background:var(--soft)}
+  .planwin{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--soft)}
+  .pw-h{font-weight:700;font-size:13px;margin-bottom:8px}
 
   /* toast */
   #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;
@@ -457,6 +459,10 @@ const SLOTS = [
 function availSlots(){ const now=NOWH(); return SLOTS.map((s,i)=>({i,s})).filter(o=>o.s.from>=now+1); }
 function firstAvailSlot(){ const a=availSlots(); return a.length?a[0].i:-1; }
 function slotWin(s){ return s?String(s.from).padStart(2,'0')+':00–'+String(s.to).padStart(2,'0')+':00':'—'; }
+function ileriOzet(){ if(S.mode!==2) return '';
+  let t=' · 📦 Alım '+(S.alimTarih||'tarih?')+' '+S.alimFrom+'–'+S.alimTo;
+  t+= S.teslimPlan ? (' · 🎯 Teslim '+(S.teslimTarih||'tarih?')+' '+S.teslimFrom+'–'+S.teslimTo) : ' · 🎯 Teslim: esnek (depoya alınır)';
+  return t; }
 const ITEM_CATS = [
   {id:'dosya',  ad:'Dosya / Evrak',       desi:1,   kg:0.5, skip:true},
   {id:'koli',   ad:'Koli',                desi:12,  kg:8},
@@ -496,7 +502,7 @@ function stopRankAt(s,h){
 function stopBestRank(s){ let b=0; for(let h=0;h<24;h++) b=Math.max(b,stopRankAt(s,h)); return b; }
 function minGirisAt(h){ return Math.min(...S.stops.map(s=>stopRankAt(s,h))); }
 function rankBestFor(stopsArr){ let b=0; for(let h=0;h<24;h++) b=Math.max(b,Math.min(...stopsArr.map(st=>stopRankAt(st,h)))); return b; }
-function modeHour(i){ if(i===0) return NOWH(); if(i===1) return ((SLOTS[S.slot]||SLOTS[0]).from)+1; return parseInt(S.ileriSaat||'10')||10; }
+function modeHour(i){ if(i===0) return NOWH(); if(i===1) return ((SLOTS[S.slot]||SLOTS[0]).from)+1; return parseInt(S.alimFrom||'10')||10; }
 function modeOk(i){
   if(S.v!=='yuk') return true;
   const h=modeHour(i);
@@ -524,6 +530,7 @@ function freshS(v){ return { v:v, step:0, km:12,
   stops:[ {id:1,type:'alim',addr:'',rule:'r724',cGiris:6,cBig:6,cFrom:'22:00',cTo:'06:00',ac:'08:00',ka:'18:00',bekleme:15,firma:'',kisi:'',tel:'',detay:false},
           {id:2,type:'teslim',addr:'',rule:'r724',cGiris:6,cBig:6,cFrom:'22:00',cTo:'06:00',ac:'09:00',ka:'18:00',bekleme:15,firma:'',kisi:'',tel:'',detay:false} ],
   ileriSaat:'10:00',
+  alimTarih:'', alimFrom:'10:00', alimTo:'12:00', teslimPlan:false, teslimTarih:'', teslimFrom:'14:00', teslimTo:'18:00',
   items:[ {id:1,cat:'dosya',adet:1,en:'',boy:'',yuk:'',kg:'',kirilgan:false,dik:false,ustuste:true,sogukC:'',alim:1,teslim:2} ],
   nsid:3, niid:2, vehOnly:false, vehOnlyOk:false, multiOk:false,
   veh:null, vehManual:false,
@@ -586,6 +593,15 @@ function validate(){
   if(S.v==='yuk' && S.step===2 && feas().infeasible && !S.multiOk){ toast('🚫 Tek araç çözümü yok — çoklu araç planı veya manuel planlama gerekli.'); return false; }
   if(S.v==='yuk' && S.step===1 && S.vehOnly && !S.vehOnlyOk){ toast('⚠️ "Araç seçimi yeterli" yolunda sorumluluk onayı zorunludur.'); return false; }
   if((S.v!=='ev') && S.step===3 && S.mode===null){ toast('⚠️ Bir teslimat zamanı kartı seçin.'); return false; }
+  if(S.v==='yuk' && S.step===3 && S.mode===2){
+    if(!S.alimTarih){ toast('⚠️ İleri tarihli rezervasyon için alım tarihini seçin.'); return false; }
+    if(S.alimFrom>=S.alimTo){ toast('⚠️ Alım penceresi: başlangıç saati bitişten önce olmalı.'); return false; }
+    if(S.teslimPlan){
+      if(!S.teslimTarih){ toast('⚠️ Teslim penceresi için tarih seçin (ya da teslim planını kapatın).'); return false; }
+      if(S.teslimFrom>=S.teslimTo){ toast('⚠️ Teslim penceresi: başlangıç saati bitişten önce olmalı.'); return false; }
+      if(S.teslimTarih<S.alimTarih || (S.teslimTarih===S.alimTarih && S.teslimFrom<S.alimTo)){ toast('⚠️ Teslim penceresi alım penceresinden SONRA olmalı.'); return false; }
+    }
+  }
   if(S.v==='yuk' && S.step===3 && S.mode!==null && !modeOk(S.mode)){ toast('🚫 Seçilen zamanlama, güzergahtaki saatli giriş kurallarıyla çelişiyor — uygun bir kart/saat seçin.'); return false; }
   return true;
 }
@@ -963,8 +979,25 @@ function matrixPanel(){
         <div class="pick slotcard ${S.slot===o.i?'sel':''}" onclick="S.slot=${o.i};render()">
           <div class="emoji">${o.s.ico}</div><div class="win">${slotWin(o.s)}</div><div class="cut">son sipariş ${String(o.s.from-1).padStart(2,'0')}:00</div>
         </div>`).join('')}</div>`:`<div class="hintbox" style="border-color:#fecaca;background:#fef2f2;color:#991b1b">⚠️ Bugün için seçilebilir slot kalmadı — her slot <b>en az 1 saat önceden</b> verilmelidir. <b>İleri tarihli rezervasyon</b> seçin (kayıtlı araçlar da havuza girer).</div>`}`:''}
-    ${S.mode===2?`<div class="grid2" style="margin-top:14px"><div><label class="fld">Tarih</label><input type="date" value="${S.tarih}" onchange="S.tarih=this.value"></div>
-      <div><label class="fld">Saat (giriş kuralları bu saate göre denetlenir)</label><input type="time" value="${S.ileriSaat}" onchange="S.ileriSaat=this.value;render()"></div></div>`:''}
+    ${S.mode===2?`
+      <div class="planwin" style="margin-top:14px">
+        <div class="pw-h">📦 Alım (yükleme) penceresi — yük bu tarih/saat aralığında alınır</div>
+        <div class="grid g3">
+          <div><label class="fld">Tarih</label><input type="date" value="${S.alimTarih}" onchange="S.alimTarih=this.value;render()"></div>
+          <div><label class="fld">Saat — başlangıç</label><input type="time" value="${S.alimFrom}" onchange="S.alimFrom=this.value;render()"></div>
+          <div><label class="fld">Saat — bitiş</label><input type="time" value="${S.alimTo}" onchange="S.alimTo=this.value;render()"></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">Giriş kuralları alım <b>başlangıç saatine</b> (${S.alimFrom||'—'}) göre denetlenir.</div>
+      </div>
+      <label class="chk" style="margin-top:12px"><input type="checkbox" ${S.teslimPlan?'checked':''} onchange="S.teslimPlan=this.checked;render()">🎯 Teslim için de tarih/saat aralığı belirleyeceğim</label>
+      ${S.teslimPlan?`<div class="planwin" style="margin-top:8px">
+        <div class="pw-h">🎯 Teslim (boşaltma) penceresi — yük bu tarih/saat aralığında teslim edilir</div>
+        <div class="grid g3">
+          <div><label class="fld">Tarih</label><input type="date" value="${S.teslimTarih}" onchange="S.teslimTarih=this.value;render()"></div>
+          <div><label class="fld">Saat — başlangıç</label><input type="time" value="${S.teslimFrom}" onchange="S.teslimFrom=this.value;render()"></div>
+          <div><label class="fld">Saat — bitiş</label><input type="time" value="${S.teslimTo}" onchange="S.teslimTo=this.value;render()"></div>
+        </div>
+      </div>`:`<div class="hintbox" style="margin-top:8px">📦 Yalnız <b>alım</b> planlandı: yük belirttiğiniz pencerede alınıp <b>depo/aktarma noktasına</b> taşınır; teslim zamanı esnektir (operasyon en uygun teslimi planlar) — dilerseniz yukarıdan teslim penceresi de ekleyin.</div>`}`:''}
     <div class="hintbox">⭐ Önerilen kart; çevrim içi taşıyıcı arzı, mesafe, aciliyet ve <b>noktaların saatli giriş kurallarına</b> göre sistemce seçilir. ⏰ Saatli kural örneği: şehir içi kamyon yasağında Kamyon/TIR yalnız 22:00–06:00 girebilir → sistem gündüz kartlarını kapatır, gece saatli ileri rezervasyonu önerir. İleri tarihte <b>çevrim içi olmayan ama kayıtlı</b> araçlar da havuza girer. Gün içi slotlar konsolide edilir — Express'e göre %18 uygun. ETA, Google trafik verisiyle (simülasyon: Express ×1.45).</div>
   </div></div>`;
 }
@@ -1226,7 +1259,7 @@ function confirmPanel(){
       ${isEv?`<div class="price-line"><span class="muted">Ev</span><span>${S.oda} · keşif: ${S.kesif}</span></div>
       <div class="price-line"><span class="muted">Çıkış binası</span><span>${S.fromKat}. kat · asansör ${S.fromAsansor?'var':'yok'}${S.fromYukAs?' · yük asansörü gerekli':''}</span></div>
       <div class="price-line"><span class="muted">Varış binası</span><span>${S.toKat}. kat · asansör ${S.toAsansor?'var':'yok'}${S.toYukAs?' · yük asansörü gerekli':''}</span></div>`:''}
-      ${!isEv&&S.mode!==null?`<div class="price-line"><span class="muted">Zamanlama</span><span>${MODES[S.mode].ad}${S.mode===1?` · slot ${slotWin(SLOTS[S.slot])}`:''}${S.mode===2&&S.tarih?` (${S.tarih})`:''} — ETA ~${eta(S.mode)} dk</span></div>`:''}
+      ${!isEv&&S.mode!==null?`<div class="price-line"><span class="muted">Zamanlama</span><span>${MODES[S.mode].ad}${S.mode===1?` · slot ${slotWin(SLOTS[S.slot])}`:''}${ileriOzet()} — ETA ~${eta(S.mode)} dk</span></div>`:''}
       <div class="law">⚖️ 6502/Mesafeli Sözleşmeler: yandaki kırılım onaydan önce gösterilen <b>nihai</b> fiyattır; listede olmayan ücret tahsil edilemez. ${isEv?'Ev&Ofis fiyatı keşif sonrası sabitlenir; keşif ücretsizdir.':''} ${t.meter?'Taksimetre tutarı UKOME tarifesine göre kesinleşir.':''}</div>
     </div></div></div>
     <div>${pricePanel()}</div></div>`;
