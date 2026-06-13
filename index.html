@@ -222,6 +222,10 @@
   .candrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;background:var(--soft)}
   .planwin{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--soft)}
   .pw-h{font-weight:700;font-size:13px;margin-bottom:8px}
+  .planrow{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px}
+  .planrow:last-of-type{border-bottom:0}
+  .planrow .pn{font-size:20px;width:28px;text-align:center;flex:none}
+  .planrow .ps{font-size:11.5px;color:var(--muted)}
 
   /* toast */
   #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;
@@ -1290,6 +1294,30 @@ function routeText(){
     return 'A1: '+(a[0]&&a[0].addr?a[0].addr.split(',')[0]:'—')+' · T'+t.length+': '+(t.length&&t[t.length-1].addr?t[t.length-1].addr.split(',')[0]:'—')+(S.stops.length>2?' (+'+(S.stops.length-2)+' durak)':''); }
   return (S.from?S.from.split(',')[0]:'—')+' → '+(S.to?S.to.split(',')[0]:'—');
 }
+/* ====== İleri tarihli sipariş: tarihe göre zamanlanmış 2 bacaklı dispatch ====== */
+function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function isToday(s){ return !!s && s===todayISO(); }
+function dMinus1(s){ if(!s) return '—'; const p=s.split('-').map(Number); const d=new Date(p[0],p[1]-1,p[2]); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function trDate(s){ if(!s) return '—'; const p=s.split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):s; }
+function planPanel(o){ const pl=o.plan; if(!pl) return '';
+  const alimTrig = isToday(pl.alimTarih)
+    ? '🔎 Alım <b>bugün</b> — kurye <b>şu an aranıyor</b>; yük alınıp depoya taşınacak.'
+    : '🌙 Alım, <b>'+trDate(dMinus1(pl.alimTarih))+' gecesi</b> (alım tarihinden 1 gün önce) gece motoruyla planlanır — araç şimdiden bağlanmaz.';
+  const teslimTrig = pl.teslimPlan
+    ? '🌙 Teslim aracı, <b>'+trDate(dMinus1(pl.teslimTarih))+' gecesi</b> (teslim tarihinden 1 gün önce) gece motoruyla planlanır.'
+    : '🤝 Teslim zamanı <b>esnek</b> — yük depoda bekler; pencere netleşince motor planlar.';
+  return `<div class="panel"><div class="panel-h"><b>📅 Planlı Sipariş Akışı</b><span class="badge">zamanlanmış — motor tarihe göre çalışır</span></div>
+  <div class="panel-b">
+    <div class="planrow"><div class="pn">📦</div><div><b>Alım penceresi:</b> ${trDate(pl.alimTarih)} · ${pl.alimFrom}–${pl.alimTo}<br><span class="ps">${alimTrig}</span></div></div>
+    <div class="planrow"><div class="pn">🏬</div><div><b>Depo / aktarma:</b> yük alınıp depoya taşınır, teslim planına kadar bekler.</div></div>
+    <div class="planrow"><div class="pn">🎯</div><div><b>Teslim penceresi:</b> ${pl.teslimPlan?trDate(pl.teslimTarih)+' · '+pl.teslimFrom+'–'+pl.teslimTo:'esnek (henüz belirsiz)'}<br><span class="ps">${teslimTrig}</span></div></div>
+    ${o.status==='Planlandi'?`<div class="navrow" style="margin-top:10px"><button class="btn pri" onclick="runNightEngine('${o.no}','alim')">⏩ Demo: Alım D-1 gece motorunu çalıştır</button></div>`:''}
+    ${o.scheduled&&o.status==='KuryeAtandi'&&pl.teslimPlan&&!o.teslimDispatched?`<div class="navrow" style="margin-top:10px"><button class="btn sec" onclick="runNightEngine('${o.no}','teslim')">⏩ Demo: Teslim D-1 gece motorunu çalıştır</button></div>`:''}
+    <div class="hintbox" style="margin-top:10px">Express/Gün-içi slot siparişlerinde bu akış yoktur — kurye hemen aranır. İleri tarihlide sistem <b>araçları gereksiz erken bağlamaz</b>: her bacak (alım/teslim) kendi tarihine <b>1 gün kala</b> planlanır → daha yüksek doluluk, daha iyi arz.</div>
+  </div></div>`; }
+function runNightEngine(no,leg){ const o=ORDERS.find(x=>x.no===no); if(!o) return;
+  if(leg==='alim'){ toast('🌙 Alım D-1 gece motoru çalıştı — kurye aranıyor.'); setStatus(no,'KuryeAraniyor'); dispatchSim(no); }
+  else { o.teslimDispatched=true; toast('🌙 Teslim D-1 gece motoru çalıştı — teslim aracı planlanıyor (demo).'); renderTrack(); } }
 function placeOrder(){
   if(S.v==='ev'){ toast('✅ Keşif talebiniz alındı! (demo) Operasyon ekibi '+(S.kesif==='video'?'video keşif için arayacak.':'yerinde keşif planlayacak.')); showView('home'); return; }
   const v=curVeh();
@@ -1308,17 +1336,27 @@ function placeOrder(){
     o.req={minRank:vr, girisMax:minGiris(), desi:S.vehOnly?0:totDesi(), kg:S.vehOnly?0:totKg(),
            adr:false, frigo:S.items.some(it=>catOf(it).soguk), rota:routeText()};
   }
+  /* İLERİ TARİHLİ (mode 2): zamanlanmış akış — hemen kurye ARAMAZ */
+  const scheduled = (S.v==='yuk' && S.mode===2);
+  if(scheduled){
+    o.scheduled=true; o.teslimDispatched=false;
+    o.plan={ alimTarih:S.alimTarih, alimFrom:S.alimFrom, alimTo:S.alimTo, teslimPlan:S.teslimPlan, teslimTarih:S.teslimTarih, teslimFrom:S.teslimFrom, teslimTo:S.teslimTo };
+    if(!isToday(S.alimTarih)){ o.status='Planlandi'; o.history=[{key:'Beklemede',at:nowTime()},{key:'Planlandi',at:nowTime()}]; }   // gelecek alım → beklet
+  }
   o.suggestion=null; o.note=null;
   ORDERS.unshift(o); updateNavListBadge();
-  toast('✅ Sipariş oluşturuldu — '+o.no+' · Takip ekranı açılıyor…');
+  toast(scheduled
+    ? (o.status==='Planlandi' ? '📅 Planlı sipariş oluşturuldu — '+o.no+'. Kurye, alım tarihine 1 gün kala aranacak.' : '📅 Planlı sipariş — '+o.no+'. Alım bugün: kurye aranıyor, teslim D-1 planlanacak.')
+    : '✅ Sipariş oluşturuldu — '+o.no+' · Takip ekranı açılıyor…');
   showTrack(o.no);
-  dispatchSim(o.no);
+  if(o.status==='KuryeAraniyor') dispatchSim(o.no);   // Planlandı ise tetiklenmez
 }
 /* ---- DISPATCH SİMÜLASYONU: boşta yoksa → rota üstü öneri → o da yoksa müşteri seçenekleri ---- */
 function fitsIdle(c,req){ const v=poolVeh(c); return c.online&&!c.busy&&c.docs.k1&&v.rank>=req.minRank&&(req.girisMax==null||v.rank<=req.girisMax)&&v.maxDesi>=req.desi&&v.maxKg>=req.kg&&(!req.adr||c.docs.adr)&&(!req.frigo||c.docs.frigo); }
 function fitsEnroute(c,req){ const v=poolVeh(c); return c.online&&c.busy&&c.docs.k1&&v.rank>=req.minRank&&(req.girisMax==null||v.rank<=req.girisMax)&&(c.bosDesi||0)>=req.desi&&(c.bosKg||0)>=req.kg&&(!req.adr||c.docs.adr)&&(!req.frigo||c.docs.frigo); }
 function dispatchSim(no){
   const o=ORDERS.find(x=>x.no===no); if(!o) return;
+  if(o.status==='Planlandi') return;   // zamanlanmış sipariş — gece motoru tetiklenene kadar arama yok
   if(o.cat!=='yuk'||!o.req){ setTimeout(()=>{ const x=ORDERS.find(y=>y.no===no); if(x&&x.status==='KuryeAraniyor') setStatus(no,'KuryeAtandi'); },3500); return; }
   setTimeout(()=>{
     const x=ORDERS.find(y=>y.no===no); if(!x||x.status!=='KuryeAraniyor') return;
@@ -1397,6 +1435,7 @@ function statusBadge(o){
   if(o.status==='IptalEdildi') return {cls:'st-cancel',ic:'✕',label:'İptal Edildi'};
   const k=o.status;
   if(k==='Beklemede') return {cls:'st-wait',ic:'🕒',label:'Beklemede'};
+  if(k==='Planlandi') return {cls:'st-wait',ic:'📅',label:'Planlandı (zamanlanmış)'};
   if(k==='KuryeAraniyor') return {cls:'st-seek pulse',ic:'🔎',label:'Kurye Aranıyor'};
   if(k==='KuryeAtandi') return {cls:'st-assigned',ic:'🧑‍✈️',label:'Kurye Atandı'};
   if(k==='Tamamlandi') return {cls:'st-done',ic:'🎉',label:'Tamamlandı'};
@@ -1443,6 +1482,11 @@ function renderList(){
 function showTrack(no){ CUR_TRACK=no; showView('track'); renderTrack(); }
 /* Kurye aranıyor durumunda: spinner / rota üstü öneri kartı / seçenek kartları / bilgi notu */
 function seekPanel(o){
+  const plan = o.scheduled ? planPanel(o) : '';
+  if(o.scheduled && o.status==='Planlandi') return plan;   // gelecek alım → yalnız plan, kurye arama yok
+  return plan + seekPanelCore(o);
+}
+function seekPanelCore(o){
   if(o.suggestion&&o.suggestion.type==='pick'){ const cs=o.suggestion.cands;
     return `<div class="panel"><div class="panel-h"><b>🧭 Size uygun taşıyıcılar — birini seçin</b><span class="badge">puana göre sıralı · sabit fiyat</span></div>
     <div class="panel-b">
