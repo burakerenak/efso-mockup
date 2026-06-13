@@ -214,6 +214,13 @@
   .atag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:4px;vertical-align:middle}
   .atag.p{background:#dcfce7;color:#166534}.atag.d{background:#dbeafe;color:#1e40af}.atag.x{background:#f1f5f9;color:#64748b}
 
+  /* hesap tipi toggle + kurye aday satırı */
+  .acctog{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .acctog button{border:1px solid var(--line);background:#fff;color:var(--muted);font-family:inherit;font-weight:700;font-size:13px;padding:8px 16px;border-radius:10px;cursor:pointer}
+  .acctog button.on{background:var(--efso,#0ea5e9);color:#fff;border-color:transparent}
+  .acctog .hint{font-size:11.5px;color:var(--muted)}
+  .candrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;background:var(--soft)}
+
   /* toast */
   #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;
     padding:13px 20px;border-radius:13px;font-size:13px;max-width:540px;line-height:1.5;box-shadow:0 12px 32px rgba(0,0,0,.3);
@@ -687,6 +694,32 @@ function renderAddrMgr(){ const el=document.getElementById('addrMgrBody'); if(!e
       <div class="navrow" style="margin-top:8px"><button class="btn sm ghost" onclick="cancelAddrDraft()">Vazgeç</button><div class="sp"></div><button class="btn sm pri" onclick="saveAddrDraft()">Kaydet</button></div>
     </div>`:`<div class="navrow" style="margin-top:10px"><button class="btn sm sec" onclick="newAddrDraft()">＋ Yeni adres</button><span style="font-size:11.5px;color:var(--muted);align-self:center;margin-left:8px">${akt}/${MAX_AKTIF_ADRES} aktif · pasifler sayılmaz</span></div>`;
   el.innerHTML=rows+form; const t=document.getElementById('addrMgrTitle'); if(t) t.textContent='📍 Kayıtlı Adreslerim ('+akt+'/'+MAX_AKTIF_ADRES+' aktif)'; }
+/* ====== Hesap tipi + bağlama göre araç/kap filtreleme (D1/D2) ====== */
+let ACCOUNT='bireysel'; let showAllVeh=false;
+function setAccount(a){ ACCOUNT=a; showAllVeh=false; if(S&&S.v) render(); }
+const BIREYSEL_VEH=['moto','courier','transit'];
+const BIREYSEL_CATS=['dosya','koli','beyaz','mobilya','diger'];
+function vehListFor(){ let base=(ACCOUNT==='kurumsal'||showAllVeh)?YUK_VEH.slice():YUK_VEH.filter(v=>BIREYSEL_VEH.includes(v.id));
+  const sv=suggestVeh(); const ids=new Set(base.map(v=>v.id));
+  [sv.main,sv.alt].forEach(v=>{ if(v&&!ids.has(v.id)){ base.push(v); ids.add(v.id);} });
+  return base.sort((a,b)=>YUK_VEH.indexOf(a)-YUK_VEH.indexOf(b)); }
+function catsForItem(it){ if(ACCOUNT==='kurumsal') return ITEM_CATS; return ITEM_CATS.filter(c=>BIREYSEL_CATS.includes(c.id)||c.id===it.cat); }
+function accountToggle(){ return `<div class="acctog">
+  <button class="${ACCOUNT==='bireysel'?'on':''}" onclick="setAccount('bireysel')">👤 Bireysel</button>
+  <button class="${ACCOUNT==='kurumsal'?'on':''}" onclick="setAccount('kurumsal')">🏢 Kurumsal</button>
+  <span class="hint">${ACCOUNT==='bireysel'?'Sade akış — sık kullanılan araç & kap cinsleri':'Tüm araçlar + kurumsal kap cinsleri (palet, big-bag, soğuk zincir…)'}</span></div>`; }
+/* ====== Müşteri kurye seçimi — HİBRİT (D4 · sabit fiyat D5 · anonim D6) ====== */
+function dispatchModeFor(o){ const big=o.req&&o.req.minRank>=4; const planned=o.modeLabel&&/İleri/i.test(o.modeLabel); return (big||o.account==='kurumsal'||planned)?'pick':'auto'; }
+function pickCands(o){ const cs=POOL.filter(c=>fitsIdle(c,o.req)||fitsEnroute(c,o.req));
+  return cs.map(c=>({c,s:scoreFor(c,o.req)})).sort((a,b)=>b.s-a.s).slice(0,4).map((x,i)=>({code:String.fromCharCode(65+i),s:x.s,
+    eta:poolEta(x.c)+(x.c.busy?15:0),km:x.c.km,puan:x.c.puan,vehName:poolVeh(x.c).name,ph:poolVeh(x.c).ph,enroute:!!x.c.busy,_vehId:x.c.veh})); }
+function pickCourier(no,code){ const o=ORDERS.find(x=>x.no===no); if(!o||!o.suggestion||!o.suggestion.cands) return;
+  const c=o.suggestion.cands.find(x=>x.code===code); if(!c) return;
+  o.courier={name:'Taşıyıcı '+c.code, veh:c.vehName+' · kimlik maskeli', rate:'★ '+c.puan, eta:c.eta+' dk', phone:'+90 5•• ••• •• ••'};
+  o.veh=c._vehId; o.vehName=c.vehName; o.vehEmoji=c.ph; o.suggestion=null; o.note=null;
+  if(!o.history.find(h=>h.key==='KuryeAtandi')) o.history.push({key:'KuryeAtandi',at:nowTime()}); o.status='KuryeAtandi';
+  toast('✅ Taşıyıcı '+c.code+' seçildi — teklif gönderildi (SignalR). Kabul ederse atanır; reddederse sıradaki adaya geçilir.');
+  renderTrack(); updateNavListBadge(); }
 function addItem(){ const al=S.stops.find(s=>s.type==='alim'), te=S.stops.find(s=>s.type==='teslim');
   S.items.push({id:S.niid++,cat:'dosya',adet:1,en:'',boy:'',yuk:'',kg:'',kirilgan:false,dik:false,ustuste:true,sogukC:'',alim:al?al.id:null,teslim:te?te.id:null}); render(); }
 function delItem(id){ if(S.items.length<=1){ toast('⚠️ En az 1 ürün kalmalı.'); return; } S.items=S.items.filter(i=>i.id!==id); render(); }
@@ -988,7 +1021,7 @@ function itemsPanel(){
     <div class="stop"><div class="head"><div class="pin a">📦</div><b>Ürün ${ix+1} — ${c.ad} · ${itemDesi(it)} desi / ${itemKg(it)} kg</b>
       <button class="btn sm ghost" onclick="delItem(${it.id})" title="Ürünü sil">🗑</button></div>
       <div class="grid3">
-        <div><label class="fld">Kap / kategori</label><select onchange="uI(${it.id},'cat',this.value)">${ITEM_CATS.map(cc=>`<option value="${cc.id}" ${it.cat===cc.id?'selected':''}>${cc.ad}</option>`).join('')}</select></div>
+        <div><label class="fld">Kap / kategori</label><select onchange="uI(${it.id},'cat',this.value)">${catsForItem(it).map(cc=>`<option value="${cc.id}" ${it.cat===cc.id?'selected':''}>${cc.ad}</option>`).join('')}</select></div>
         <div><label class="fld">Adet</label><input type="number" min="1" value="${it.adet}" onchange="uI(${it.id},'adet',Number(this.value))"></div>
         <div><label class="fld">Ağırlık (kg/adet)</label><input type="number" value="${it.kg}" placeholder="~${c.kg}" onchange="uI(${it.id},'kg',this.value)" ${c.skip?'disabled':''}></div>
       </div>
@@ -1048,7 +1081,7 @@ function vehPanel(){
   const sv=suggestVeh(); const selId=S.veh||sv.main.id;
   return `<div class="panel"><div class="panel-h"><b>🚚 Araç Seçimi</b><span class="badge">${S.vehOnly?'komple kiralama — siz seçin':'sistem önerdi — değiştirebilirsiniz'}</span></div>
   <div class="panel-b">
-    <div class="grid g3">${YUK_VEH.map(v=>{
+    <div class="grid g3">${vehListFor().map(v=>{
       const giremez=v.rank>sv.mg, kucuk=!S.vehOnly&&(v.maxDesi<ucreteEsas()||v.maxKg<totKg());
       const tag=v.id===sv.main.id&&!S.vehOnly?'<span class="pill ok">ÖNERİLEN</span>':(sv.alt&&v.id===sv.alt.id&&!S.vehOnly?'<span class="pill info">BİR ÜST</span>':'');
       return `<div class="pick ${selId===v.id?'sel':''} ${giremez?'dis':''}" onclick="tryPickVeh('${v.id}')">
@@ -1058,18 +1091,22 @@ function vehPanel(){
         ${!giremez&&!kucuk&&v.rank>minGirisAt(NOWH())?'<span class="pill warn">⏰ saat kısıtlı — yalnız izinli saatlerde</span>':''}
         ${v.truckSkip?'<span class="pill" style="background:#f1f5f9;color:#475569">foto + sorumluluk onayı</span>':''}
       </div>`; }).join('')}</div>
+    ${(ACCOUNT==='bireysel'&&!showAllVeh)?`<div class="navrow" style="margin-top:10px"><button class="btn sm sec" onclick="showAllVeh=true;render()">＋ Tüm araçları göster (kamyon / TIR / lowbed)</button><span style="font-size:11.5px;color:var(--muted);align-self:center;margin-left:8px">Bireysel görünümde sade liste; gerekirse tümüne erişebilirsiniz.</span></div>`:''}
     ${sv.blocked.length&&!S.vehOnly?`<div class="hintbox" style="margin-top:12px;border-color:#fecaca;background:#fef2f2;color:#991b1b">⚠️ ${sv.blocked.map(b=>b.name).join(', ')} yüke uyar ama <b>güzergah giriş kısıtına takılır</b> — devre dışı.</div>`:''}
     <div class="hintbox">Sürücü uygunluğu otomatik denetlenir: ehliyet sınıfı + taşıma cinsine göre belge (K1, SRC; ADR'de SRC5; frigorifikte ekipman + sıcaklık kaydı). Belgesi geçersiz taşıyıcı eşleşmeye giremez (hard filter).</div>
   </div></div>`;
 }
 function stepYuk(){
-  if(S.step===0) return `<div class="formwrap"><div>${routePanel()}</div><div>${pricePanel()}</div></div>`;
+  if(S.step===0) return `${accountToggle()}<div class="formwrap"><div>${routePanel()}</div><div>${pricePanel()}</div></div>`;
   if(S.step===1){ const sv=suggestVeh();
     return `<div class="formwrap"><div>${itemsPanel()}</div>
     <div>${pricePanel()}
       ${(!S.vehOnly)?(feas().infeasible?`<div class="panel"><div class="panel-h"><b>🚚 Araç planlaması</b></div><div class="panel-b">${feasBlock()}</div></div>`
-      :`<div class="panel"><div class="panel-h"><b>🚚 Ön araç önerisi</b></div><div class="panel-b">
-        <div style="font-size:13px"><b>${sv.main.ph} ${sv.main.name}</b> — toplam ${totDesi()} desi / ${totKg()} kg (${S.items.length} ürün) için en küçük yeterli araç.</div>
+      :`<div class="panel"><div class="panel-h"><b>🚚 Ön araç önerisi</b><span class="badge">2 uygun araç + fiyat</span></div><div class="panel-b">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Toplam ${totDesi()} desi / ${totKg()} kg (${S.items.length} ürün) için sistem 2 araç öneriyor:</div>
+        <div class="price-line"><span><b>${sv.main.ph} ${sv.main.name}</b> <span class="pill ok" style="margin:0">ÖNERİLEN — en küçük yeterli</span></span><span><b>${money(TARIFF[sv.main.id]?(TARIFF[sv.main.id].base+S.km*TARIFF[sv.main.id].skm):0)}</b></span></div>
+        ${sv.alt?`<div class="price-line"><span><b>${sv.alt.ph} ${sv.alt.name}</b> <span class="pill info" style="margin:0">BİR ÜST — daha esnek</span></span><span><b>${money(TARIFF[sv.alt.id]?(TARIFF[sv.alt.id].base+S.km*TARIFF[sv.alt.id].skm):0)}</b></span></div>`:''}
+        <div class="hintbox" style="margin-top:8px">💡 Seçtiğiniz araç <b>online</b> ise anında eşleşir. Online uygun araç yoksa sistem <b>alım noktasına en yakın boşta</b> aracı, o da yoksa <b>güzergahınızdan geçen (rota üstü)</b> doluluğu uygun aracı önerir — indirimli fiyatla. (F2: EasyCargo doluluk + Yandex rota.)</div>
         ${sv.blocked.length?`<div class="hintbox" style="border-color:#fecaca;background:#fef2f2;color:#991b1b">⚠️ ${sv.blocked.map(b=>b.name).join(', ')} yüke uyar ama <b>giriş kısıtına takılır</b>.</div>`:''}
       </div></div>`):''}</div></div>`;
   }
@@ -1219,7 +1256,7 @@ function placeOrder(){
     rtText:routeText(), km:S.km, itemsN:S.v==='yuk'?S.items.length:0, price:fiyat(), meter:TARIFF[curVehId()].meter,
     doluluk:S.v==='yuk'?Math.min(99,Math.round(ucreteEsas()/( (YUK_VEH.find(x=>x.id===curVehId())||{maxDesi:1500}).maxDesi )*100)):0,
     legs:multi?multi.map(l=>({veh:l.veh.id, vehName:l.veh.name, ph:l.veh.ph, stop:stopLabel(l.stop), items:l.items, d:l.d, kg:l.kg})):null,
-    status:'KuryeAraniyor', createdAt:nowStr(), courier:null, couriers:null,
+    status:'KuryeAraniyor', createdAt:nowStr(), courier:null, couriers:null, account:ACCOUNT,
     history:[{key:'Beklemede',at:nowTime()},{key:'KuryeAraniyor',at:nowTime()}] };
   if(S.v==='yuk'){
     const vr=(YUK_VEH.find(x=>x.id===o.veh)||{rank:3}).rank;
@@ -1240,7 +1277,11 @@ function dispatchSim(no){
   if(o.cat!=='yuk'||!o.req){ setTimeout(()=>{ const x=ORDERS.find(y=>y.no===no); if(x&&x.status==='KuryeAraniyor') setStatus(no,'KuryeAtandi'); },3500); return; }
   setTimeout(()=>{
     const x=ORDERS.find(y=>y.no===no); if(!x||x.status!=='KuryeAraniyor') return;
-    if(POOL.some(c=>fitsIdle(c,x.req))){ setStatus(no,'KuryeAtandi'); return; }   // boşta araç var → normal atama
+    if(dispatchModeFor(x)==='pick'){                                              // büyük/planlı/kurumsal → müşteri seçer
+      const cands=pickCands(x);
+      if(cands.length){ x.suggestion={type:'pick',cands}; if(CUR_TRACK===no) renderTrack(); toast('🧭 Size uygun taşıyıcılar listelendi — birini seçin (puana göre sıralı).'); return; }
+    }
+    if(POOL.some(c=>fitsIdle(c,x.req))){ setStatus(no,'KuryeAtandi'); return; }   // boşta araç var → otomatik atama (anlık/küçük)
     const enr=POOL.filter(c=>fitsEnroute(c,x.req)).sort((a,b)=>a.km-b.km);
     if(enr.length){
       const c=enr[0], v=poolVeh(c);
@@ -1357,6 +1398,18 @@ function renderList(){
 function showTrack(no){ CUR_TRACK=no; showView('track'); renderTrack(); }
 /* Kurye aranıyor durumunda: spinner / rota üstü öneri kartı / seçenek kartları / bilgi notu */
 function seekPanel(o){
+  if(o.suggestion&&o.suggestion.type==='pick'){ const cs=o.suggestion.cands;
+    return `<div class="panel"><div class="panel-h"><b>🧭 Size uygun taşıyıcılar — birini seçin</b><span class="badge">puana göre sıralı · sabit fiyat</span></div>
+    <div class="panel-b">
+      <div class="hintbox">Bu taşıyıcılar siparişinize uygun (hard filter'dan geçti), çevrim içi ve yakın. <b>Fiyat sabittir (${money(o.price||0)})</b>; taşıyıcılar yalnız <b>puan / tahmini varış / mesafe</b> ile farklılaşır. Kimlikler gizlidir, iletişim atama sonrası maskeli hattan yürür.</div>
+      ${cs.map(c=>`<div class="candrow">
+        <div style="flex:1;min-width:0"><b>${c.ph} Taşıyıcı ${c.code}</b> ${c.enroute?'<span class="pill" style="background:#fef9c3;color:#854d0e;margin:0">rota üstü</span>':'<span class="pill ok" style="margin:0">boşta</span>'}
+          <div style="font-size:11.5px;color:var(--muted)">${c.vehName} · ⭐ ${c.puan} · ~${c.eta} dk · ${c.km} km · ${money(o.price||0)}</div></div>
+        <div style="text-align:center;min-width:46px"><div class="score" style="font-size:18px">${c.s}</div><div style="font-size:10px;color:var(--muted)">skor</div></div>
+        <button class="btn sm pri" onclick="pickCourier('${o.no}','${c.code}')">Seç</button>
+      </div>`).join('')}
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">Seçtiğiniz taşıyıcı kabul etmezse otomatik olarak sıradaki adaya geçilir. Anlık/küçük gönderilerde bu ekran çıkmaz — sistem en uygun aracı otomatik atar.</div>
+    </div></div>`; }
   if(o.suggestion&&o.suggestion.type==='enroute'){ const s=o.suggestion;
     return `<div class="panel"><div class="panel-h"><b>💡 Sistem Önerisi — Rota Üstü Araç</b><span class="badge">konsolidasyon / multi-load</span></div>
     <div class="panel-b">
