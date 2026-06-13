@@ -445,10 +445,18 @@ const MODES = [
   {id:'ileri',   ad:'İleri Tarihli Rezervasyon',        emoji:'📅', carpan:0.78, trafik:1.00, tag:'EN UYGUN', cls:'ok'},
 ];
 const SLOTS = [
-  {id:'sabah', ico:'🌅', name:'Sabah', taahhut:'Öğleden önce teslim',  win:'09:00–13:00', cut:'Kesim 08:00'},
-  {id:'oglen', ico:'☀️', name:'Öğlen', taahhut:'İş günü içinde teslim', win:'13:00–18:00', cut:'Kesim 12:00'},
-  {id:'aksam', ico:'🌆', name:'Akşam', taahhut:'Akşam saatlerinde',     win:'18:00–22:00', cut:'Kesim 17:00'},
+  {id:'s08', ico:'🌅', from:8,  to:10},
+  {id:'s10', ico:'🌅', from:10, to:12},
+  {id:'s12', ico:'☀️', from:12, to:14},
+  {id:'s14', ico:'☀️', from:14, to:16},
+  {id:'s16', ico:'🌆', from:16, to:18},
+  {id:'s18', ico:'🌆', from:18, to:20},
+  {id:'s20', ico:'🌙', from:20, to:22},
 ];
+/* slot şu andan EN AZ 1 SAAT sonra başlıyorsa seçilebilir (geçmiş + çok yakın slotlar gizlenir) */
+function availSlots(){ const now=NOWH(); return SLOTS.map((s,i)=>({i,s})).filter(o=>o.s.from>=now+1); }
+function firstAvailSlot(){ const a=availSlots(); return a.length?a[0].i:-1; }
+function slotWin(s){ return s?String(s.from).padStart(2,'0')+':00–'+String(s.to).padStart(2,'0')+':00':'—'; }
 const ITEM_CATS = [
   {id:'dosya',  ad:'Dosya / Evrak',       desi:1,   kg:0.5, skip:true},
   {id:'koli',   ad:'Koli',                desi:12,  kg:8},
@@ -488,7 +496,7 @@ function stopRankAt(s,h){
 function stopBestRank(s){ let b=0; for(let h=0;h<24;h++) b=Math.max(b,stopRankAt(s,h)); return b; }
 function minGirisAt(h){ return Math.min(...S.stops.map(s=>stopRankAt(s,h))); }
 function rankBestFor(stopsArr){ let b=0; for(let h=0;h<24;h++) b=Math.max(b,Math.min(...stopsArr.map(st=>stopRankAt(st,h)))); return b; }
-function modeHour(i){ if(i===0) return NOWH(); if(i===1) return [10,15,19][S.slot]??15; return parseInt(S.ileriSaat||'10')||10; }
+function modeHour(i){ if(i===0) return NOWH(); if(i===1) return ((SLOTS[S.slot]||SLOTS[0]).from)+1; return parseInt(S.ileriSaat||'10')||10; }
 function modeOk(i){
   if(S.v!=='yuk') return true;
   const h=modeHour(i);
@@ -894,6 +902,8 @@ function onerilenMode(){
   const alt=[2,1,0].filter(i=>modeOk(i)); return alt.length?alt[0]:base;
 }
 function pickMode(i){
+  if(i===1){ const av=availSlots(); if(!av.length){ toast('⚠️ Bugün için seçilebilir slot kalmadı (her slot en az 1 saat önceden verilmeli). İleri tarihli rezervasyonu seçin.'); }
+    else if(!av.some(o=>o.i===S.slot)) S.slot=av[0].i; }   // geçerli/uygun slota çek
   if(!modeOk(i)){ toast('🚫 '+MODES[i].ad+': '+curVeh().name+' bu zamanda ('+String(modeHour(i)).padStart(2,'0')+':00 civarı) güzergahtaki giriş kuralına takılıyor.\nSaatli kural örneği: kamyon yasağı 06:00–22:00 → İleri tarihli + gece saati seçin ya da slot saatini değiştirin.'); return; }
   S.mode=i; render();
 }
@@ -948,12 +958,11 @@ function matrixPanel(){
         <div class="eta">⏱ ETA ~${eta(i)} dk ${i===1?'· slot içinde':''} ${i===2?'· seçtiğiniz gün/saat':''}</div>
         ${ok?`<span class="pill ${m.cls}">${m.tag}</span>`:`<span class="pill bad">🚫 ${curVeh().name} ~${String(modeHour(i)).padStart(2,'0')}:00'te giremez</span>`}
       </div>`; }).join('')}</div>
-    ${S.mode===1?`<label class="fld" style="margin-top:14px">Saat aralığı (slot) — kesim saatine kadar verilen siparişler o slota girer</label>
-      <div class="grid g3">${SLOTS.map((s,i)=>`
-        <div class="pick slotcard ${S.slot===i?'sel':''}" onclick="S.slot=${i};render()">
-          <div class="emoji">${s.ico}</div><h3 style="font-size:13.5px">${s.name}</h3>
-          <div class="win">${s.win}</div><p>${s.taahhut}</p><div class="cut">${s.cut}</div>
-        </div>`).join('')}</div>`:''}
+    ${S.mode===1?`<label class="fld" style="margin-top:14px">Saat aralığı (2 saatlik slot) — şu an ${String(NOWH()).padStart(2,'0')}:00; en erken <b>${String(NOWH()+1).padStart(2,'0')}:00</b> sonrası seçilebilir</label>
+      ${availSlots().length?`<div class="grid g3">${availSlots().map(o=>`
+        <div class="pick slotcard ${S.slot===o.i?'sel':''}" onclick="S.slot=${o.i};render()">
+          <div class="emoji">${o.s.ico}</div><div class="win">${slotWin(o.s)}</div><div class="cut">son sipariş ${String(o.s.from-1).padStart(2,'0')}:00</div>
+        </div>`).join('')}</div>`:`<div class="hintbox" style="border-color:#fecaca;background:#fef2f2;color:#991b1b">⚠️ Bugün için seçilebilir slot kalmadı — her slot <b>en az 1 saat önceden</b> verilmelidir. <b>İleri tarihli rezervasyon</b> seçin (kayıtlı araçlar da havuza girer).</div>`}`:''}
     ${S.mode===2?`<div class="grid2" style="margin-top:14px"><div><label class="fld">Tarih</label><input type="date" value="${S.tarih}" onchange="S.tarih=this.value"></div>
       <div><label class="fld">Saat (giriş kuralları bu saate göre denetlenir)</label><input type="time" value="${S.ileriSaat}" onchange="S.ileriSaat=this.value;render()"></div></div>`:''}
     <div class="hintbox">⭐ Önerilen kart; çevrim içi taşıyıcı arzı, mesafe, aciliyet ve <b>noktaların saatli giriş kurallarına</b> göre sistemce seçilir. ⏰ Saatli kural örneği: şehir içi kamyon yasağında Kamyon/TIR yalnız 22:00–06:00 girebilir → sistem gündüz kartlarını kapatır, gece saatli ileri rezervasyonu önerir. İleri tarihte <b>çevrim içi olmayan ama kayıtlı</b> araçlar da havuza girer. Gün içi slotlar konsolide edilir — Express'e göre %18 uygun. ETA, Google trafik verisiyle (simülasyon: Express ×1.45).</div>
@@ -1081,7 +1090,10 @@ function vehPanel(){
   const sv=suggestVeh(); const selId=S.veh||sv.main.id;
   return `<div class="panel"><div class="panel-h"><b>🚚 Araç Seçimi</b><span class="badge">${S.vehOnly?'komple kiralama — siz seçin':'sistem önerdi — değiştirebilirsiniz'}</span></div>
   <div class="panel-b">
-    <div class="grid g3">${vehListFor().map(v=>{
+    <div class="grid g3">${vehListFor().filter(v=>{
+      const kucuk=!S.vehOnly&&(v.maxDesi<ucreteEsas()||v.maxKg<totKg());
+      return !(ACCOUNT==='kurumsal' && kucuk);   // kurumsalda kapasite yetersiz araçları gizle
+    }).map(v=>{
       const giremez=v.rank>sv.mg, kucuk=!S.vehOnly&&(v.maxDesi<ucreteEsas()||v.maxKg<totKg());
       const tag=v.id===sv.main.id&&!S.vehOnly?'<span class="pill ok">ÖNERİLEN</span>':(sv.alt&&v.id===sv.alt.id&&!S.vehOnly?'<span class="pill info">BİR ÜST</span>':'');
       return `<div class="pick ${selId===v.id?'sel':''} ${giremez?'dis':''}" onclick="tryPickVeh('${v.id}')">
@@ -1214,7 +1226,7 @@ function confirmPanel(){
       ${isEv?`<div class="price-line"><span class="muted">Ev</span><span>${S.oda} · keşif: ${S.kesif}</span></div>
       <div class="price-line"><span class="muted">Çıkış binası</span><span>${S.fromKat}. kat · asansör ${S.fromAsansor?'var':'yok'}${S.fromYukAs?' · yük asansörü gerekli':''}</span></div>
       <div class="price-line"><span class="muted">Varış binası</span><span>${S.toKat}. kat · asansör ${S.toAsansor?'var':'yok'}${S.toYukAs?' · yük asansörü gerekli':''}</span></div>`:''}
-      ${!isEv&&S.mode!==null?`<div class="price-line"><span class="muted">Zamanlama</span><span>${MODES[S.mode].ad}${S.mode===1?` · ${SLOTS[S.slot].name} ${SLOTS[S.slot].win} (${SLOTS[S.slot].cut})`:''}${S.mode===2&&S.tarih?` (${S.tarih})`:''} — ETA ~${eta(S.mode)} dk</span></div>`:''}
+      ${!isEv&&S.mode!==null?`<div class="price-line"><span class="muted">Zamanlama</span><span>${MODES[S.mode].ad}${S.mode===1?` · slot ${slotWin(SLOTS[S.slot])}`:''}${S.mode===2&&S.tarih?` (${S.tarih})`:''} — ETA ~${eta(S.mode)} dk</span></div>`:''}
       <div class="law">⚖️ 6502/Mesafeli Sözleşmeler: yandaki kırılım onaydan önce gösterilen <b>nihai</b> fiyattır; listede olmayan ücret tahsil edilemez. ${isEv?'Ev&Ofis fiyatı keşif sonrası sabitlenir; keşif ücretsizdir.':''} ${t.meter?'Taksimetre tutarı UKOME tarifesine göre kesinleşir.':''}</div>
     </div></div></div>
     <div>${pricePanel()}</div></div>`;
