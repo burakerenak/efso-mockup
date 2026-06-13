@@ -205,6 +205,15 @@
   .modal h3{margin:0 0 8px;font-size:16px}
   .modal p{font-size:13px;color:#475569;line-height:1.6;margin:0 0 16px}
 
+  /* kayıtlı adres yönetimi */
+  .btn.xs{padding:5px 10px;font-size:11px;border-radius:8px}
+  .addr-row{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;background:var(--soft)}
+  .addr-row.pasif{opacity:.55}
+  .addr-form{margin-top:10px;padding:12px;border:1px dashed var(--line);border-radius:12px;background:#fff}
+  .addr-form .ai{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;font-size:13px;font-family:inherit;box-sizing:border-box}
+  .atag{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:4px;vertical-align:middle}
+  .atag.p{background:#dcfce7;color:#166534}.atag.d{background:#dbeafe;color:#1e40af}.atag.x{background:#f1f5f9;color:#64748b}
+
   /* toast */
   #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;
     padding:13px 20px;border-radius:13px;font-size:13px;max-width:540px;line-height:1.5;box-shadow:0 12px 32px rgba(0,0,0,.3);
@@ -379,6 +388,18 @@
   </div>
 </div>
 
+<!-- KAYITLI ADRESLERİM MODALI -->
+<div class="ovl" id="addrOvl">
+  <div class="modal" style="max-width:560px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <h3 id="addrMgrTitle" style="margin:0;flex:1">📍 Kayıtlı Adreslerim</h3>
+      <button class="btn sm ghost" onclick="closeAddrMgr()">✕ Kapat</button>
+    </div>
+    <p style="margin:0 0 8px;font-size:12px;color:var(--muted)">Sık kullandığınız adresleri kaydedin (en fazla <b>4 aktif</b>). Birini <b>varsayılan alım</b> veya <b>varsayılan teslim</b> yapabilirsiniz; sipariş ekranında otomatik dolar. Pasif adres kotaya sayılmaz.</p>
+    <div id="addrMgrBody"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 <script>
 /* ====================== BİLDİRİM ====================== */
@@ -522,7 +543,7 @@ const WIZ = {
   yuk:   { title:'📦 Yük Taşımacılığı',   sub:'Adres ve ürünlerden sonra sistem aracı önerir; fiyatı zamanlama kartlarında karşılaştırırsınız.', steps:['Güzergah','Ürünler + Eşleştirme','Araç','Zamanlama','Onay'] },
   ev:    { title:'🏠 Ev & Ofis Taşımacılığı', sub:'Kat/asansör/paketleme bilgisi keşfi planlar; kesin fiyat keşif sonrası sabitlenir.', steps:['Adresler','Ev / Ofis Bilgisi','Keşif & Tarih','Özet'] },
 };
-function startWiz(v){ S=freshS(v); setNav(v); showView('wiz'); document.getElementById('cbTitle').textContent=WIZ[v].title.replace(/^\S+\s/,''); render(); }
+function startWiz(v){ S=freshS(v); if(v==='yuk') S.stops.forEach(applyDefaultToStop); setNav(v); showView('wiz'); document.getElementById('cbTitle').textContent=WIZ[v].title.replace(/^\S+\s/,''); render(); }
 let lastWasConfirm=false;
 function nav(d){
   const max=WIZ[S.v].steps.length-1;
@@ -585,32 +606,87 @@ function telChk(el){ const d=el.value.replace(/\D/g,'');
 function uSq(id,k,v){ stopById(id)[k]=v; } /* render'sız (yazarken odak kaybolmasın) */
 function uI(id,k,v){ const it=S.items.find(i=>i.id===id); it[k]=v; render(); }
 function uIq(id,k,v){ const it=S.items.find(i=>i.id===id); it[k]=v; }
-function addStop(t){ S.stops.push({id:S.nsid++,type:t,addr:'',rule:'r724',cGiris:6,cBig:6,cFrom:'22:00',cTo:'06:00',ac:'08:00',ka:'18:00',bekleme:15,firma:'',kisi:'',tel:'',detay:false}); toast('+ '+(t==='alim'?'Alım':t==='ugrama'?'Uğrama':'Teslim')+' noktası eklendi'); render(); }
+function addStop(t){ const ns={id:S.nsid++,type:t,addr:'',rule:'r724',cGiris:6,cBig:6,cFrom:'22:00',cTo:'06:00',ac:'08:00',ka:'18:00',bekleme:15,firma:'',kisi:'',tel:'',detay:false}; applyDefaultToStop(ns); S.stops.push(ns); toast('+ '+(t==='alim'?'Alım':t==='ugrama'?'Uğrama':'Teslim')+' noktası eklendi'); render(); }
 function delStop(id){ const s=stopById(id);
   if(s.type==='alim'&&S.stops.filter(x=>x.type==='alim').length<=1){ toast('⚠️ En az 1 alım noktası gerekli.'); return; }
   if(s.type==='teslim'&&S.stops.filter(x=>x.type==='teslim').length<=1){ toast('⚠️ En az 1 teslim noktası gerekli.'); return; }
   S.stops=S.stops.filter(x=>x.id!==id);
   S.items.forEach(it=>{ if(it.alim===id) it.alim=null; if(it.teslim===id) it.teslim=null; }); render(); }
-/* ====== Kayıtlı adres defteri (sık kullanılan adresler) ====== */
-let SAVED_ADDR=[];
+/* ====== Kayıtlı adres defteri (hesaba bağlı · en fazla 4 AKTİF · varsayılan alım/teslim) ====== */
+const MAX_AKTIF_ADRES=4;
+let SAVED_ADDR=[]; let addrSeq=1;
 try{ SAVED_ADDR=JSON.parse(localStorage.getItem('efso_saved_addr')||'[]'); }catch(e){ SAVED_ADDR=[]; }
+SAVED_ADDR.forEach(a=>{ if(a.id==null) a.id='a'+(addrSeq++); if(a.active===undefined)a.active=true; if(a.defPickup===undefined)a.defPickup=false; if(a.defDelivery===undefined)a.defDelivery=false; });
+addrSeq=SAVED_ADDR.reduce((m,a)=>Math.max(m,Number(String(a.id).replace(/\D/g,''))||0),0)+1;
 function persistSavedAddr(){ try{ localStorage.setItem('efso_saved_addr', JSON.stringify(SAVED_ADDR)); }catch(e){} }
-function savedAddrLabel(a){ const base=(a.firma||a.kisi||(a.addr||'').split(',')[0]||'Adres').trim().slice(0,38);
-  return base + (a.firma&&a.kisi?(' · '+a.kisi):''); }
+function savedAddrLabel(a){ const base=(a.firma||a.kisi||(a.addr||'').split(',')[0]||'Adres').trim().slice(0,38); return base+(a.firma&&a.kisi?(' · '+a.kisi):''); }
 function telGecerli(t){ const d=(t||'').replace(/\D/g,''); return d.length===11 && d.startsWith('05'); }
+function aktifAdresler(){ return SAVED_ADDR.filter(a=>a.active); }
+function addrById(aid){ return SAVED_ADDR.find(a=>a.id===aid); }
+function defaultAddr(type){ return SAVED_ADDR.find(a=>a.active && (type==='alim'?a.defPickup:type==='teslim'?a.defDelivery:false)); }
+function applyDefaultToStop(s){ const d=defaultAddr(s.type); if(d) Object.assign(s,{addr:d.addr,firma:d.firma,kisi:d.kisi,tel:d.tel,ac:d.ac,ka:d.ka,rule:d.rule,cGiris:d.cGiris,cBig:d.cBig,cFrom:d.cFrom,cTo:d.cTo,bekleme:d.bekleme}); }
 function saveStopAddr(id){ const s=stopById(id);
   if(!s.addr){ toast('⚠️ Önce adres girin, sonra kaydedin.'); return; }
   if(!s.kisi||!s.kisi.trim()){ toast('⚠️ İlgili kişi olmadan kaydedilemez.'); return; }
   if(!telGecerli(s.tel)){ toast('⚠️ Geçerli telefon olmadan kaydedilemez (05XX XXX XX XX).'); return; }
-  const rec={addr:s.addr,firma:s.firma,kisi:s.kisi,tel:s.tel,ac:s.ac,ka:s.ka,rule:s.rule,cGiris:s.cGiris,cBig:s.cBig,cFrom:s.cFrom,cTo:s.cTo,bekleme:s.bekleme};
-  const dup=SAVED_ADDR.findIndex(a=>a.addr===rec.addr && a.kisi===rec.kisi);
-  if(dup>=0){ SAVED_ADDR[dup]=rec; toast('💾 Kayıtlı adres güncellendi: '+savedAddrLabel(rec)); }
-  else { SAVED_ADDR.push(rec); toast('💾 Adres kaydedildi — sonraki siparişlerde seçebilirsiniz.'); }
-  persistSavedAddr(); render(); }
-function applySavedAddr(id, ix){ if(ix===''||ix==null) return; const a=SAVED_ADDR[Number(ix)]; if(!a) return; const s=stopById(id);
+  const dup=SAVED_ADDR.find(a=>a.addr===s.addr && a.kisi===s.kisi);
+  if(dup){ Object.assign(dup,{firma:s.firma,tel:s.tel,ac:s.ac,ka:s.ka,rule:s.rule,cGiris:s.cGiris,cBig:s.cBig,cFrom:s.cFrom,cTo:s.cTo,bekleme:s.bekleme}); persistSavedAddr(); toast('💾 Kayıtlı adres güncellendi: '+savedAddrLabel(dup)); render(); return; }
+  if(aktifAdresler().length>=MAX_AKTIF_ADRES){ toast('⚠️ En fazla '+MAX_AKTIF_ADRES+' aktif adres. Yeni için "Adreslerim"den birini pasif yapın.'); return; }
+  SAVED_ADDR.push({id:'a'+(addrSeq++),addr:s.addr,firma:s.firma,kisi:s.kisi,tel:s.tel,ac:s.ac,ka:s.ka,rule:s.rule,cGiris:s.cGiris,cBig:s.cBig,cFrom:s.cFrom,cTo:s.cTo,bekleme:s.bekleme,active:true,defPickup:false,defDelivery:false});
+  persistSavedAddr(); toast('💾 Adres kaydedildi ('+aktifAdresler().length+'/'+MAX_AKTIF_ADRES+' aktif).'); render(); }
+function applySavedAddr(id, aid){ if(!aid) return; const a=addrById(aid); if(!a) return; const s=stopById(id);
   Object.assign(s,{addr:a.addr,firma:a.firma,kisi:a.kisi,tel:a.tel,ac:a.ac,ka:a.ka,rule:a.rule,cGiris:a.cGiris,cBig:a.cBig,cFrom:a.cFrom,cTo:a.cTo,bekleme:a.bekleme});
   toast('📑 Kayıtlı adres uygulandı: '+savedAddrLabel(a)); render(); }
-function delSavedAddr(ix){ SAVED_ADDR.splice(Number(ix),1); persistSavedAddr(); toast('🗑 Kayıtlı adres silindi.'); render(); }
+/* --- Kayıtlı Adreslerim modal yönetimi --- */
+function setAddrActive(aid,val){ const a=addrById(aid); if(!a) return;
+  if(val && aktifAdresler().length>=MAX_AKTIF_ADRES){ toast('⚠️ En fazla '+MAX_AKTIF_ADRES+' aktif adres olabilir.'); return; }
+  a.active=val; if(!val){ a.defPickup=false; a.defDelivery=false; } persistSavedAddr(); renderAddrMgr(); }
+function setAddrDefault(aid,type){ const a=addrById(aid); if(!a||!a.active) return; const key=type==='alim'?'defPickup':'defDelivery';
+  const cur=a[key]; SAVED_ADDR.forEach(x=>{ x[key]=false; }); a[key]=!cur; persistSavedAddr(); renderAddrMgr(); }
+function delSavedAddr(aid){ SAVED_ADDR=SAVED_ADDR.filter(a=>a.id!==aid); persistSavedAddr(); renderAddrMgr(); toast('🗑 Kayıtlı adres silindi.'); }
+let addrDraft=null;
+function openAddrMgr(){ addrDraft=null; document.getElementById('addrOvl').classList.add('show'); renderAddrMgr(); }
+function closeAddrMgr(){ document.getElementById('addrOvl').classList.remove('show'); if(S&&S.v) render(); }
+function newAddrDraft(){ if(aktifAdresler().length>=MAX_AKTIF_ADRES){ toast('⚠️ En fazla '+MAX_AKTIF_ADRES+' aktif adres. Önce birini pasif yapın.'); return; } addrDraft={addr:'',firma:'',kisi:'',tel:'',ac:'08:00',ka:'18:00',rule:'r724',cGiris:6,cBig:6,cFrom:'22:00',cTo:'06:00',bekleme:15}; renderAddrMgr(); }
+function cancelAddrDraft(){ addrDraft=null; renderAddrMgr(); }
+function draftSet(k,v){ if(addrDraft) addrDraft[k]=v; }
+function draftTel(el){ el.value=telFmt(el.value); if(addrDraft) addrDraft.tel=el.value; }
+function editAddr(aid){ const a=addrById(aid); if(!a) return; addrDraft=Object.assign({},a); renderAddrMgr(); }
+function saveAddrDraft(){ const d=addrDraft; if(!d) return;
+  if(!d.addr||!d.addr.trim()){ toast('⚠️ Adres zorunlu.'); return; }
+  if(!d.kisi||!d.kisi.trim()){ toast('⚠️ İlgili kişi zorunlu.'); return; }
+  if(!telGecerli(d.tel)){ toast('⚠️ Geçerli telefon zorunlu (05XX XXX XX XX).'); return; }
+  if(d.id){ Object.assign(addrById(d.id),d); toast('💾 Adres güncellendi.'); }
+  else { if(aktifAdresler().length>=MAX_AKTIF_ADRES){ toast('⚠️ En fazla '+MAX_AKTIF_ADRES+' aktif adres. Önce birini pasif yapın.'); return; }
+    SAVED_ADDR.push(Object.assign({id:'a'+(addrSeq++),active:true,defPickup:false,defDelivery:false},d)); toast('💾 Adres eklendi.'); }
+  addrDraft=null; persistSavedAddr(); renderAddrMgr(); }
+function renderAddrMgr(){ const el=document.getElementById('addrMgrBody'); if(!el) return; const akt=aktifAdresler().length;
+  const rows=SAVED_ADDR.length?SAVED_ADDR.map(a=>`
+    <div class="addr-row${a.active?'':' pasif'}">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:13px">${savedAddrLabel(a)} ${a.defPickup?'<span class="atag p">⭐ Vars. Alım</span>':''}${a.defDelivery?'<span class="atag d">⭐ Vars. Teslim</span>':''}${a.active?'':'<span class="atag x">Pasif</span>'}</div>
+        <div style="font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.addr||'—'} · ${a.kisi||'—'} · ${a.tel||'—'}</div>
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
+        ${a.active?`<button class="btn xs ${a.defPickup?'pri':'sec'}" onclick="setAddrDefault('${a.id}','alim')" title="Varsayılan alım">Alım</button>
+        <button class="btn xs ${a.defDelivery?'pri':'sec'}" onclick="setAddrDefault('${a.id}','teslim')" title="Varsayılan teslim">Teslim</button>`:''}
+        <button class="btn xs sec" onclick="setAddrActive('${a.id}',${a.active?'false':'true'})">${a.active?'Pasif yap':'Aktif yap'}</button>
+        <button class="btn xs sec" onclick="editAddr('${a.id}')">Düzenle</button>
+        <button class="btn xs ghost" onclick="delSavedAddr('${a.id}')">🗑</button>
+      </div>
+    </div>`).join(''):`<div style="font-size:12.5px;color:var(--muted);padding:8px 0">Henüz kayıtlı adres yok. "＋ Yeni adres" ile ekleyin (en fazla 4 aktif).</div>`;
+  const form=addrDraft?`
+    <div class="addr-form">
+      <div style="font-weight:600;margin-bottom:6px">${addrDraft.id?'✏️ Adresi düzenle':'＋ Yeni adres'}</div>
+      <input class="ai" placeholder="Adres (mahalle, cadde, no)" value="${(addrDraft.addr||'').replace(/"/g,'&quot;')}" oninput="draftSet('addr',this.value)">
+      <div class="grid3" style="margin-top:6px">
+        <input class="ai" placeholder="İlgili kişi *" value="${(addrDraft.kisi||'').replace(/"/g,'&quot;')}" oninput="draftSet('kisi',this.value)">
+        <input class="ai" placeholder="05XX XXX XX XX *" maxlength="14" value="${addrDraft.tel||''}" oninput="draftTel(this)">
+        <input class="ai" placeholder="Firma (ops.)" value="${(addrDraft.firma||'').replace(/"/g,'&quot;')}" oninput="draftSet('firma',this.value)">
+      </div>
+      <div class="navrow" style="margin-top:8px"><button class="btn sm ghost" onclick="cancelAddrDraft()">Vazgeç</button><div class="sp"></div><button class="btn sm pri" onclick="saveAddrDraft()">Kaydet</button></div>
+    </div>`:`<div class="navrow" style="margin-top:10px"><button class="btn sm sec" onclick="newAddrDraft()">＋ Yeni adres</button><span style="font-size:11.5px;color:var(--muted);align-self:center;margin-left:8px">${akt}/${MAX_AKTIF_ADRES} aktif · pasifler sayılmaz</span></div>`;
+  el.innerHTML=rows+form; const t=document.getElementById('addrMgrTitle'); if(t) t.textContent='📍 Kayıtlı Adreslerim ('+akt+'/'+MAX_AKTIF_ADRES+' aktif)'; }
 function addItem(){ const al=S.stops.find(s=>s.type==='alim'), te=S.stops.find(s=>s.type==='teslim');
   S.items.push({id:S.niid++,cat:'dosya',adet:1,en:'',boy:'',yuk:'',kg:'',kirilgan:false,dik:false,ustuste:true,sogukC:'',alim:al?al.id:null,teslim:te?te.id:null}); render(); }
 function delItem(id){ if(S.items.length<=1){ toast('⚠️ En az 1 ürün kalmalı.'); return; } S.items=S.items.filter(i=>i.id!==id); render(); }
@@ -860,18 +936,17 @@ function routePanel(){
     <div class="stop"><div class="head"><div class="pin ${t.cls}">${t.e}</div><b>${stopLabel(s)}</b>
       <button class="btn sm ghost" onclick="uS(${s.id},'detay',${!s.detay})">${s.detay?'Detayı gizle':'Detay'}</button>
       <button class="btn sm ghost" onclick="delStop(${s.id})" title="Noktayı sil">🗑</button></div>
-      ${SAVED_ADDR.length?`<div class="grid2" style="margin:8px 0 2px">
-        <div><label class="fld">📑 Kayıtlı adreslerden seç</label>
-          <select onchange="applySavedAddr(${s.id},this.value)"><option value="">— Kayıtlı adres seç —</option>${SAVED_ADDR.map((a,ix)=>`<option value="${ix}">${savedAddrLabel(a)}</option>`).join('')}</select></div>
-        <div style="display:flex;align-items:flex-end;gap:6px"><button class="btn sm sec" onclick="saveStopAddr(${s.id})" title="Bu noktayı kayıtlı adreslere ekle">💾 Bu adresi kaydet</button></div>
-      </div>`:''}
+      <div class="grid2" style="margin:8px 0 2px">
+        <div>${aktifAdresler().length?`<label class="fld">📑 Kayıtlı adreslerden seç</label>
+          <select onchange="applySavedAddr(${s.id},this.value)"><option value="">— Kayıtlı adres seç —</option>${aktifAdresler().map(a=>`<option value="${a.id}">${savedAddrLabel(a)}${(s.type==='alim'&&a.defPickup)||(s.type==='teslim'&&a.defDelivery)?' ⭐':''}</option>`).join('')}</select>`:`<label class="fld">Kayıtlı adres</label><div style="font-size:11.5px;color:var(--muted);padding:9px 0">Henüz kayıt yok — alanları doldurup <b>kaydedin</b>.</div>`}</div>
+        <div style="display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap"><button class="btn sm sec" onclick="saveStopAddr(${s.id})" title="Bu noktayı kayıtlı adreslere ekle">💾 Bu adresi kaydet</button><button class="btn sm ghost" onclick="openAddrMgr()" title="Kayıtlı adresleri yönet">📍 Adreslerim</button></div>
+      </div>
       ${acField('st'+s.id, s.addr, 'Mahalle, cadde, no… (yaz → öneri gelsin)')}
       <div class="grid3" style="margin-top:10px">
         <div><label class="fld">İlgili kişi <span style="color:var(--red)">*</span></label><input value="${s.kisi}" onchange="uSq(${s.id},'kisi',this.value)" placeholder="Ad Soyad"></div>
         <div><label class="fld">Telefon (maskelenir) <span style="color:var(--red)">*</span></label><input value="${s.tel}" inputmode="tel" maxlength="14" oninput="telMask(this,${s.id})" onblur="telChk(this)" placeholder="05XX XXX XX XX"></div>
         <div><label class="fld">Firma adı <span style="font-weight:400">(opsiyonel)</span></label><input value="${s.firma}" onchange="uSq(${s.id},'firma',this.value)" placeholder="örn. ABC Lojistik A.Ş."></div>
       </div>
-      ${SAVED_ADDR.length?'':`<div style="margin-top:6px"><button class="btn sm sec" onclick="saveStopAddr(${s.id})" title="Bu noktayı kayıtlı adreslere ekle">💾 Bu adresi kaydet</button></div>`}
       ${s.detay?`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
       <div class="grid3">
         <div><label class="fld">Açılış</label><input type="time" value="${s.ac}" onchange="uSq(${s.id},'ac',this.value)"></div>
