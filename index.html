@@ -532,7 +532,11 @@ function nav(d){
 }
 function validate(){
   if(S.step===0){
-    if(S.v==='yuk'){ if(S.stops.some(s=>!s.addr)){ toast('⚠️ Tüm noktaların adresini girin.'); return false; } }
+    if(S.v==='yuk'){ if(S.stops.some(s=>!s.addr)){ toast('⚠️ Tüm noktaların adresini girin.'); return false; }
+      const k=S.stops.find(s=>!s.kisi||!s.kisi.trim());
+      if(k){ toast('⚠️ '+stopLabel(k)+' için ilgili kişi zorunlu.'); return false; }
+      const tp=S.stops.find(s=>!telGecerli(s.tel));
+      if(tp){ toast('⚠️ '+stopLabel(tp)+' için geçerli telefon zorunlu (05XX XXX XX XX).'); return false; } }
     else if(!S.from||!S.to){ toast('⚠️ Lütfen alım ve teslim adresini girin.'); return false; }
   }
   if(S.v==='yuk' && S.step===1 && !S.vehOnly){
@@ -587,6 +591,26 @@ function delStop(id){ const s=stopById(id);
   if(s.type==='teslim'&&S.stops.filter(x=>x.type==='teslim').length<=1){ toast('⚠️ En az 1 teslim noktası gerekli.'); return; }
   S.stops=S.stops.filter(x=>x.id!==id);
   S.items.forEach(it=>{ if(it.alim===id) it.alim=null; if(it.teslim===id) it.teslim=null; }); render(); }
+/* ====== Kayıtlı adres defteri (sık kullanılan adresler) ====== */
+let SAVED_ADDR=[];
+try{ SAVED_ADDR=JSON.parse(localStorage.getItem('efso_saved_addr')||'[]'); }catch(e){ SAVED_ADDR=[]; }
+function persistSavedAddr(){ try{ localStorage.setItem('efso_saved_addr', JSON.stringify(SAVED_ADDR)); }catch(e){} }
+function savedAddrLabel(a){ const base=(a.firma||a.kisi||(a.addr||'').split(',')[0]||'Adres').trim().slice(0,38);
+  return base + (a.firma&&a.kisi?(' · '+a.kisi):''); }
+function telGecerli(t){ const d=(t||'').replace(/\D/g,''); return d.length===11 && d.startsWith('05'); }
+function saveStopAddr(id){ const s=stopById(id);
+  if(!s.addr){ toast('⚠️ Önce adres girin, sonra kaydedin.'); return; }
+  if(!s.kisi||!s.kisi.trim()){ toast('⚠️ İlgili kişi olmadan kaydedilemez.'); return; }
+  if(!telGecerli(s.tel)){ toast('⚠️ Geçerli telefon olmadan kaydedilemez (05XX XXX XX XX).'); return; }
+  const rec={addr:s.addr,firma:s.firma,kisi:s.kisi,tel:s.tel,ac:s.ac,ka:s.ka,rule:s.rule,cGiris:s.cGiris,cBig:s.cBig,cFrom:s.cFrom,cTo:s.cTo,bekleme:s.bekleme};
+  const dup=SAVED_ADDR.findIndex(a=>a.addr===rec.addr && a.kisi===rec.kisi);
+  if(dup>=0){ SAVED_ADDR[dup]=rec; toast('💾 Kayıtlı adres güncellendi: '+savedAddrLabel(rec)); }
+  else { SAVED_ADDR.push(rec); toast('💾 Adres kaydedildi — sonraki siparişlerde seçebilirsiniz.'); }
+  persistSavedAddr(); render(); }
+function applySavedAddr(id, ix){ if(ix===''||ix==null) return; const a=SAVED_ADDR[Number(ix)]; if(!a) return; const s=stopById(id);
+  Object.assign(s,{addr:a.addr,firma:a.firma,kisi:a.kisi,tel:a.tel,ac:a.ac,ka:a.ka,rule:a.rule,cGiris:a.cGiris,cBig:a.cBig,cFrom:a.cFrom,cTo:a.cTo,bekleme:a.bekleme});
+  toast('📑 Kayıtlı adres uygulandı: '+savedAddrLabel(a)); render(); }
+function delSavedAddr(ix){ SAVED_ADDR.splice(Number(ix),1); persistSavedAddr(); toast('🗑 Kayıtlı adres silindi.'); render(); }
 function addItem(){ const al=S.stops.find(s=>s.type==='alim'), te=S.stops.find(s=>s.type==='teslim');
   S.items.push({id:S.niid++,cat:'dosya',adet:1,en:'',boy:'',yuk:'',kg:'',kirilgan:false,dik:false,ustuste:true,sogukC:'',alim:al?al.id:null,teslim:te?te.id:null}); render(); }
 function delItem(id){ if(S.items.length<=1){ toast('⚠️ En az 1 ürün kalmalı.'); return; } S.items=S.items.filter(i=>i.id!==id); render(); }
@@ -836,12 +860,18 @@ function routePanel(){
     <div class="stop"><div class="head"><div class="pin ${t.cls}">${t.e}</div><b>${stopLabel(s)}</b>
       <button class="btn sm ghost" onclick="uS(${s.id},'detay',${!s.detay})">${s.detay?'Detayı gizle':'Detay'}</button>
       <button class="btn sm ghost" onclick="delStop(${s.id})" title="Noktayı sil">🗑</button></div>
+      ${SAVED_ADDR.length?`<div class="grid2" style="margin:8px 0 2px">
+        <div><label class="fld">📑 Kayıtlı adreslerden seç</label>
+          <select onchange="applySavedAddr(${s.id},this.value)"><option value="">— Kayıtlı adres seç —</option>${SAVED_ADDR.map((a,ix)=>`<option value="${ix}">${savedAddrLabel(a)}</option>`).join('')}</select></div>
+        <div style="display:flex;align-items:flex-end;gap:6px"><button class="btn sm sec" onclick="saveStopAddr(${s.id})" title="Bu noktayı kayıtlı adreslere ekle">💾 Bu adresi kaydet</button></div>
+      </div>`:''}
       ${acField('st'+s.id, s.addr, 'Mahalle, cadde, no… (yaz → öneri gelsin)')}
       <div class="grid3" style="margin-top:10px">
+        <div><label class="fld">İlgili kişi <span style="color:var(--red)">*</span></label><input value="${s.kisi}" onchange="uSq(${s.id},'kisi',this.value)" placeholder="Ad Soyad"></div>
+        <div><label class="fld">Telefon (maskelenir) <span style="color:var(--red)">*</span></label><input value="${s.tel}" inputmode="tel" maxlength="14" oninput="telMask(this,${s.id})" onblur="telChk(this)" placeholder="05XX XXX XX XX"></div>
         <div><label class="fld">Firma adı <span style="font-weight:400">(opsiyonel)</span></label><input value="${s.firma}" onchange="uSq(${s.id},'firma',this.value)" placeholder="örn. ABC Lojistik A.Ş."></div>
-        <div><label class="fld">İlgili kişi</label><input value="${s.kisi}" onchange="uSq(${s.id},'kisi',this.value)" placeholder="Ad Soyad"></div>
-        <div><label class="fld">Telefon (maskelenir)</label><input value="${s.tel}" inputmode="tel" maxlength="14" oninput="telMask(this,${s.id})" onblur="telChk(this)" placeholder="05XX XXX XX XX"></div>
       </div>
+      ${SAVED_ADDR.length?'':`<div style="margin-top:6px"><button class="btn sm sec" onclick="saveStopAddr(${s.id})" title="Bu noktayı kayıtlı adreslere ekle">💾 Bu adresi kaydet</button></div>`}
       ${s.detay?`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
       <div class="grid3">
         <div><label class="fld">Açılış</label><input type="time" value="${s.ac}" onchange="uSq(${s.id},'ac',this.value)"></div>
