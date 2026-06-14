@@ -240,6 +240,13 @@
   .respbox{display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:var(--soft);font-size:13.5px;line-height:1.4}
   .respbox input{margin-top:2px;flex:none;width:18px;height:18px;accent-color:var(--green)}
   .respbox.on{border-color:var(--green);background:#f0fdf4}
+  .btn-change{display:flex;align-items:center;gap:13px;width:100%;margin-top:14px;padding:14px 16px;border:1.5px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;font-family:inherit;text-align:left;transition:.14s}
+  .btn-change:hover{border-color:var(--efso);background:#f0fdff;transform:translateY(-1px);box-shadow:0 8px 20px rgba(14,165,183,.12)}
+  .btn-change .bc-ic{font-size:22px;flex:none}
+  .btn-change .bc-tx{flex:1;display:flex;flex-direction:column}
+  .btn-change .bc-tx b{font-size:13.5px;color:var(--ink)}
+  .btn-change .bc-tx small{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .btn-change .bc-go{font-size:20px;font-weight:800;color:var(--efso-dark);flex:none}
   .vehswap{margin-top:12px}
   .vehswap summary{cursor:pointer;font-weight:700;font-size:13px;color:var(--efso-dark);padding:8px 0;list-style:none}
   .vehswap summary::-webkit-details-marker{display:none}
@@ -1543,10 +1550,11 @@ function hzVehDetail(){ const v=YUK_VEH.find(x=>x.id===H.veh); const k=kasaInfo(
     <input type="checkbox" ${H.veh01Ok?'checked':''} onchange="H.veh01Ok=this.checked;renderHizli()">
     <span>Aracı gördüm, yüküme uygun. <b>Yükleme ve kapasite sorumluluğunu kabul ediyorum.</b></span>
   </label>
-  <div class="navrow" style="margin-top:12px">
-    <button class="btn sec" onclick="hzChangeVeh()">🔁 Bu araç doğru değil — başka araç seç</button>
-    <span style="font-size:11.5px;color:var(--muted);align-self:center">Ayrı sayfada araç değiştirirsiniz; adres ve bilgileriniz korunur.</span>
-  </div>`;
+  <button class="btn-change" onclick="hzChangeVeh()">
+    <span class="bc-ic">🔁</span>
+    <span class="bc-tx"><b>Bu araç doğru değil mi? Başka araç seç</b><small>Ayrı sayfada araç seçersiniz; adres ve girdiğiniz bilgiler korunur.</small></span>
+    <span class="bc-go">→</span>
+  </button>`;
 }
 function hzPricePanel(){ const v=H.veh?YUK_VEH.find(x=>x.id===H.veh):null;
   return `<div class="panel"><div class="panel-h"><b>💰 Fiyat</b><span class="badge">${hzModeLabel()}</span></div><div class="panel-b">
