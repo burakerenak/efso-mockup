@@ -223,6 +223,16 @@
   .qbanner{display:flex;align-items:center;gap:14px;padding:16px 20px;margin-bottom:16px;border-radius:14px;cursor:pointer;background:linear-gradient(135deg,#fef9c3,#fef3c7);border:1px solid #fde68a;transition:.14s}
   .qbanner:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(217,119,6,.18)}
   .qb-ic{font-size:30px}.qb-go{font-weight:800;color:var(--efso-dark)}
+  .dchoice{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+  @media(max-width:640px){.dchoice{grid-template-columns:1fr}}
+  .dc{position:relative;display:flex;gap:11px;align-items:flex-start;padding:14px 16px;border:2px solid var(--line);border-radius:13px;cursor:pointer;background:#fff;transition:.14s}
+  .dc:hover{border-color:var(--efso);transform:translateY(-1px)}
+  .dc.on{border-color:var(--efso);background:#f0fdff;box-shadow:0 6px 18px rgba(14,165,183,.14)}
+  .dc.alt.on{border-color:var(--amber);background:#fffbeb;box-shadow:0 6px 18px rgba(217,119,6,.16)}
+  .dc .dc-ic{font-size:26px;line-height:1;flex:none}
+  .dc b{font-size:14px}.dc p{font-size:11.5px;color:var(--muted);margin:3px 0 0}
+  .dc-tick{position:absolute;top:8px;right:10px;font-weight:900;color:var(--efso)}
+  .dc.alt .dc-tick{color:var(--amber)}
   .vehdetail{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
   .vd-photo{width:160px;flex:none;height:140px;border-radius:12px;background:var(--soft);border:1px dashed var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:54px}
   .vd-spec{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
@@ -1401,6 +1411,7 @@ function kasaInfo(id){ const m={ moto:{kasa:'Top-case ~45×35×35 cm',kapi:'Üst
 
 function hzPickVeh(id){ H.veh=id; H.capWarn=false; if(id==='moto') H.items.forEach(it=>{ if(!MOTO_CATS.includes(it.cat)) it.cat='dosya'; }); renderHizli(); }
 function hzToggle01(){ H.veh01=!H.veh01; H.capWarn=false; renderHizli(); }
+function hzSet01(v){ H.veh01=v; H.capWarn=false; renderHizli(); }
 function hzItemCat(id,v){ const it=H.items.find(i=>i.id===id); it.cat=v; H.capWarn=false; renderHizli(); }
 function hzItemSet(id,k,v){ const it=H.items.find(i=>i.id===id); it[k]=v; H.capWarn=false; renderHizli(); }
 function hzAddItem(){ H.items.push({id:H.niid++,cat:H.veh==='moto'?'dosya':'koli',adet:1,kg:'',en:'',boy:'',yuk:''}); renderHizli(); }
@@ -1469,7 +1480,10 @@ function hzScreen2(){
   return `<div class="formwrap"><div>
     ${hzRoutePanel()}
     <div class="panel"><div class="panel-h"><b>📦 Kap Bilgileri</b><span class="badge">${moto?'Dosya / Koli / Diğer':'tüm kap cinsleri'}</span></div><div class="panel-b">
-      <button class="btn ${H.veh01?'pri':'sec'}" style="width:100%;margin-bottom:10px;text-align:left" onclick="hzToggle01()">${H.veh01?'✓ ':''}01 — Yük detaylarını bilmiyorum (adet/ağırlık/ölçü girmeden devam et)</button>
+      <div class="dchoice">
+        <div class="dc ${!H.veh01?'on':''}" onclick="hzSet01(false)"><div class="dc-ic">✏️</div><div><b>Yük bilgilerini biliyorum</b><p>Ben gireceğim — kap, adet, ağırlık${H.veh==='moto'?'':' (ve ölçü)'}.</p></div>${!H.veh01?'<span class="dc-tick">✓</span>':''}</div>
+        <div class="dc alt ${H.veh01?'on':''}" onclick="hzSet01(true)"><div class="dc-ic">🤷</div><div><b>01 — Yük detaylarını bilmiyorum</b><p>Ölçü girmeden devam; aracı görüp sorumluluğu kabul edin.</p></div>${H.veh01?'<span class="dc-tick">✓</span>':''}</div>
+      </div>
       ${H.capWarn?hzCapWarnBox():(H.veh01?hzVehDetail():hzItems())}
     </div></div>
   </div><div>${hzPricePanel()}</div></div>`;
