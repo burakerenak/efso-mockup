@@ -236,6 +236,15 @@
   .vehdetail{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
   .vd-photo{width:160px;flex:none;height:140px;border-radius:12px;background:var(--soft);border:1px dashed var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:54px}
   .vd-spec{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px}
+  .vd-cap{font-size:10.5px;color:var(--muted);margin-top:6px;text-align:center}
+  .respbox{display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:var(--soft);font-size:13.5px;line-height:1.4}
+  .respbox input{margin-top:2px;flex:none;width:18px;height:18px;accent-color:var(--green)}
+  .respbox.on{border-color:var(--green);background:#f0fdf4}
+  .vehswap{margin-top:12px}
+  .vehswap summary{cursor:pointer;font-weight:700;font-size:13px;color:var(--efso-dark);padding:8px 0;list-style:none}
+  .vehswap summary::-webkit-details-marker{display:none}
+  .vehswap summary:hover{text-decoration:underline}
+  .vehswap p{font-size:11.5px;color:var(--muted);margin:2px 0 8px}
   .vehchips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 12px}
   .vchip{border:1px solid var(--line);background:#fff;color:var(--ink);font-family:inherit;font-size:15px;font-weight:700;padding:13px 21px;border-radius:13px;cursor:pointer;transition:.12s}
   .vchip:hover{border-color:var(--efso)}
@@ -1481,7 +1490,7 @@ function hzScreen2(){
     ${hzRoutePanel()}
     <div class="panel"><div class="panel-h"><b>📦 Kap Bilgileri</b><span class="badge">${moto?'Dosya / Koli / Diğer':'tüm kap cinsleri'}</span></div><div class="panel-b">
       <div class="dchoice">
-        <div class="dc ${!H.veh01?'on':''}" onclick="hzSet01(false)"><div class="dc-ic">✏️</div><div><b>Yük bilgilerini biliyorum</b><p>Ben gireceğim — kap, adet, ağırlık${H.veh==='moto'?'':' (ve ölçü)'}.</p></div>${!H.veh01?'<span class="dc-tick">✓</span>':''}</div>
+        <div class="dc ${!H.veh01?'on':''}" onclick="hzSet01(false)"><div class="dc-ic">✏️</div><div><b>Yük detaylarını biliyorum</b><p>Ben gireceğim — kap, adet, ağırlık${H.veh==='moto'?'':' (ve ölçü)'}.</p></div>${!H.veh01?'<span class="dc-tick">✓</span>':''}</div>
         <div class="dc alt ${H.veh01?'on':''}" onclick="hzSet01(true)"><div class="dc-ic">🤷</div><div><b>01 — Yük detaylarını bilmiyorum</b><p>Ölçü girmeden devam; aracı görüp sorumluluğu kabul edin.</p></div>${H.veh01?'<span class="dc-tick">✓</span>':''}</div>
       </div>
       ${H.capWarn?hzCapWarnBox():(H.veh01?hzVehDetail():hzItems())}
@@ -1512,17 +1521,23 @@ function hzItems(){
 }
 function hzVehDetail(){ const v=YUK_VEH.find(x=>x.id===H.veh); const k=kasaInfo(H.veh);
   return `<div class="vehdetail">
-    <div class="vd-photo">${v.ph}<div style="font-size:11px;color:var(--muted);margin-top:6px">araç kasa/kapı fotoğrafı<br>(demo)</div></div>
+    <div class="vd-photo">${v.ph}<div class="vd-cap">araç kasası — demo görsel</div></div>
     <div style="flex:1;min-width:220px">
       <b style="font-size:15px">${v.ph} ${v.name}</b>
       <div class="vd-spec"><span>📦 Kapasite</span><b>${v.maxKg} kg · ${v.maxDesi} desi</b></div>
       <div class="vd-spec"><span>📐 Kasa (iç)</span><b>${k.kasa}</b></div>
       <div class="vd-spec"><span>🚪 Kapı</span><b>${k.kapi}</b></div>
-      <label class="chk" style="margin-top:10px"><input type="checkbox" ${H.veh01Ok?'checked':''} onchange="H.veh01Ok=this.checked;renderHizli()">✅ Aracın yüküme <b>uygun olduğunu gördüm</b>; <b>yükleme/kapasite sorumluluğunu kabul ediyorum</b>.</label>
-      <div style="margin-top:10px;font-size:12px;color:var(--muted)">Bu araç doğru değilse aşağıdan başka araç seçin — adres ve bilgileriniz korunur, yeniden onaylamanız yeterli.</div>
-      <div class="vehchips" style="margin-top:8px">${YUK_VEH.map(x=>`<button class="vchip ${H.veh===x.id?'on':''}" onclick="hzPickVeh('${x.id}')">${x.ph} ${x.name}</button>`).join('')}</div>
     </div>
-  </div>`;
+  </div>
+  <label class="respbox ${H.veh01Ok?'on':''}">
+    <input type="checkbox" ${H.veh01Ok?'checked':''} onchange="H.veh01Ok=this.checked;renderHizli()">
+    <span>Aracı gördüm, yüküme uygun. <b>Yükleme ve kapasite sorumluluğunu kabul ediyorum.</b></span>
+  </label>
+  <details class="vehswap"${H.veh01Ok?'':' open'}>
+    <summary>🔁 Bu araç doğru değil mi? Başka araç seç</summary>
+    <p>Adres ve girdiğiniz bilgiler korunur — yeni aracı onaylamanız yeterli.</p>
+    <div class="vehchips">${YUK_VEH.map(x=>`<button class="vchip ${H.veh===x.id?'on':''}" onclick="hzPickVeh('${x.id}')">${x.ph} ${x.name}</button>`).join('')}</div>
+  </details>`;
 }
 function hzPricePanel(){ const v=H.veh?YUK_VEH.find(x=>x.id===H.veh):null;
   return `<div class="panel"><div class="panel-h"><b>💰 Fiyat</b><span class="badge">${hzModeLabel()}</span></div><div class="panel-b">
