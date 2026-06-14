@@ -712,7 +712,8 @@ function setAddrDefault(aid,type){ const a=addrById(aid); if(!a||!a.active) retu
 function delSavedAddr(aid){ SAVED_ADDR=SAVED_ADDR.filter(a=>a.id!==aid); persistSavedAddr(); renderAddrMgr(); toast('🗑 Kayıtlı adres silindi.'); }
 let addrDraft=null;
 function openAddrMgr(){ addrDraft=null; document.getElementById('addrOvl').classList.add('show'); renderAddrMgr(); }
-function closeAddrMgr(){ document.getElementById('addrOvl').classList.remove('show'); if(S&&S.v) render(); }
+function rerender(){ const hz=document.getElementById('vHizli'); if(hz&&!hz.classList.contains('hide')&&H) renderHizli(); else if(S&&S.v) render(); }
+function closeAddrMgr(){ document.getElementById('addrOvl').classList.remove('show'); rerender(); }
 function newAddrDraft(){ if(aktifAdresler().length>=MAX_AKTIF_ADRES){ toast('⚠️ En fazla '+MAX_AKTIF_ADRES+' aktif adres. Önce birini pasif yapın.'); return; } addrDraft={addr:'',firma:'',kisi:'',tel:'',ac:'08:00',ka:'18:00',rule:'r724',cGiris:6,cBig:6,cFrom:'22:00',cTo:'06:00',bekleme:15}; renderAddrMgr(); }
 function cancelAddrDraft(){ addrDraft=null; renderAddrMgr(); }
 function draftSet(k,v){ if(addrDraft) addrDraft[k]=v; }
@@ -825,7 +826,8 @@ function eslesmeHatalari(){
 const AC_LOCAL=["Levent, Beşiktaş, İstanbul","Etiler, Beşiktaş, İstanbul","Maslak, Sarıyer, İstanbul","Taksim Meydanı, Beyoğlu, İstanbul","Şişli Merkez, Şişli, İstanbul","Mecidiyeköy, Şişli, İstanbul","Kadıköy Rıhtım, Kadıköy, İstanbul","Bağdat Caddesi, Kadıköy, İstanbul","Ataşehir, İstanbul","Ümraniye Merkez, Ümraniye, İstanbul","Üsküdar Meydanı, Üsküdar, İstanbul","Kartal, İstanbul","Bakırköy Çarşı, Bakırköy, İstanbul","Ataköy, Bakırköy, İstanbul","Florya, Bakırköy, İstanbul","Bağcılar Meydan, Bağcılar, İstanbul","Esenyurt, İstanbul","Beylikdüzü, İstanbul","Avcılar, İstanbul","Başakşehir, İstanbul","Eyüpsultan, İstanbul","Gaziosmanpaşa, İstanbul","Sultanahmet, Fatih, İstanbul","Eminönü, Fatih, İstanbul","Karaköy, Beyoğlu, İstanbul","İstanbul Havalimanı (IST), Arnavutköy","Sabiha Gökçen Havalimanı (SAW), Pendik","İkitelli OSB, Başakşehir, İstanbul","Dudullu OSB, Ümraniye, İstanbul","Tuzla Organize Sanayi, Tuzla, İstanbul","Pendik Merkez, Pendik, İstanbul","Çekmeköy, İstanbul","Sancaktepe, İstanbul","Zeytinburnu, İstanbul","Güngören, İstanbul","Kağıthane, İstanbul"];
 let acTimer=null, acReqId=0;
 function acSet(which,v){
-  if(which.startsWith('st')){ const s=stopById(Number(which.slice(2))); if(s) s.addr=v; }
+  if(which.startsWith('hz')){ const s=H&&H.stops&&H.stops.find(x=>x.id===Number(which.slice(2))); if(s) s.addr=v; }
+  else if(which.startsWith('st')){ const s=stopById(Number(which.slice(2))); if(s) s.addr=v; }
   else if(which==='from') S.from=v; else if(which==='to') S.to=v;
 }
 function acInput(which,q){
@@ -1345,9 +1347,48 @@ function routeText(){
    ========================================================= */
 let H=null;
 const HZ_STEPS=['Zamanlama','Araç Tipi','Adres & Kap','Onay'];
-function freshHizli(){ return { step:0, mode:0, veh:null, veh01:false, veh01Ok:false, ikinciTeslim:false, capWarn:false,
-  a:{addr:'',kisi:'',tel:''}, b:{addr:'',kisi:'',tel:''}, c:{addr:'',kisi:'',tel:''},
+function freshHizli(){ const s=[{id:1,type:'alim',addr:'',firma:'',kisi:'',tel:''},{id:2,type:'teslim',addr:'',firma:'',kisi:'',tel:''}];
+  s.forEach(st=>{ const d=defaultAddr(st.type); if(d) Object.assign(st,{addr:d.addr,firma:d.firma,kisi:d.kisi,tel:d.tel}); });
+  return { step:0, mode:0, veh:null, veh01:false, veh01Ok:false, capWarn:false,
+  stops:s, nsid:3,
   items:[{id:1,cat:'dosya',adet:1,kg:'',en:'',boy:'',yuk:''}], niid:2 }; }
+function hzStopLabel(s){ const list=H.stops.filter(x=>x.type===s.type); const i=list.indexOf(s)+1; const t=s.type==='alim'?'Alım':'Teslim'; return t+(list.length>1?' '+i:''); }
+function hzRouteText(){ const al=H.stops.filter(s=>s.type==='alim'), te=H.stops.filter(s=>s.type==='teslim');
+  return (al[0]&&al[0].addr?al[0].addr.split(',')[0]:'—')+' → '+(te[te.length-1]&&te[te.length-1].addr?te[te.length-1].addr.split(',')[0]:'—')+(H.stops.length>2?' (+'+(H.stops.length-2)+' durak)':''); }
+function hzStopSet(id,k,v){ const s=H.stops.find(x=>x.id===id); if(s) s[k]=v; }   /* render'sız — odak korunur */
+function hzAddStop(t){ const ns={id:H.nsid++,type:t,addr:'',firma:'',kisi:'',tel:''}; const d=defaultAddr(t); if(d) Object.assign(ns,{addr:d.addr,firma:d.firma,kisi:d.kisi,tel:d.tel}); H.stops.push(ns); toast('+ '+(t==='alim'?'Alım':'Teslim')+' noktası eklendi'); renderHizli(); }
+function hzDelStop(id){ const s=H.stops.find(x=>x.id===id); if(!s) return; if(H.stops.filter(x=>x.type===s.type).length<=1){ toast('⚠️ En az 1 '+(s.type==='alim'?'alım':'teslim')+' noktası gerekli.'); return; } H.stops=H.stops.filter(x=>x.id!==id); renderHizli(); }
+function hzApplySavedAddr(id,aid){ if(!aid) return; const a=addrById(aid); if(!a) return; const s=H.stops.find(x=>x.id===id); if(!s) return; Object.assign(s,{addr:a.addr,firma:a.firma,kisi:a.kisi,tel:a.tel}); toast('📑 Kayıtlı adres uygulandı: '+savedAddrLabel(a)); renderHizli(); }
+function hzSaveStopAddr(id){ const s=H.stops.find(x=>x.id===id); if(!s) return;
+  if(!s.addr){ toast('⚠️ Önce adres girin, sonra kaydedin.'); return; }
+  if(!s.kisi||!s.kisi.trim()){ toast('⚠️ İlgili kişi olmadan kaydedilemez.'); return; }
+  if(!telGecerli(s.tel)){ toast('⚠️ Geçerli telefon olmadan kaydedilemez (05XX XXX XX XX).'); return; }
+  const dup=SAVED_ADDR.find(a=>a.addr===s.addr && a.kisi===s.kisi);
+  if(dup){ Object.assign(dup,{firma:s.firma||'',tel:s.tel}); persistSavedAddr(); toast('💾 Kayıtlı adres güncellendi: '+savedAddrLabel(dup)); renderHizli(); return; }
+  if(aktifAdresler().length>=MAX_AKTIF_ADRES){ toast('⚠️ En fazla '+MAX_AKTIF_ADRES+' aktif adres. "Adreslerim"den birini pasif yapın.'); return; }
+  SAVED_ADDR.push({id:'a'+(addrSeq++),addr:s.addr,firma:s.firma||'',kisi:s.kisi,tel:s.tel,ac:'08:00',ka:'18:00',rule:'r724',cGiris:6,cBig:6,cFrom:'22:00',cTo:'06:00',bekleme:15,active:true,defPickup:false,defDelivery:false});
+  persistSavedAddr(); toast('💾 Adres kaydedildi ('+aktifAdresler().length+'/'+MAX_AKTIF_ADRES+' aktif).'); renderHizli(); }
+function hzRoutePanel(){ const pin={alim:'a',teslim:'b'}, ico={alim:'🟢',teslim:'🔴'};
+  return `<div class="panel"><div class="panel-h"><b>📍 Adres Bilgileri</b><span class="badge">${H.stops.filter(s=>s.type==='alim').length} alım · ${H.stops.filter(s=>s.type==='teslim').length} teslim</span></div><div class="panel-b">
+    ${H.stops.map(s=>`
+    <div class="stop"><div class="head"><div class="pin ${pin[s.type]}">${ico[s.type]}</div><b>${hzStopLabel(s)}</b>
+      ${H.stops.filter(x=>x.type===s.type).length>1?`<button class="btn sm ghost" onclick="hzDelStop(${s.id})" title="Noktayı sil">🗑</button>`:''}</div>
+      <div class="grid2" style="margin:8px 0 2px">
+        <div>${aktifAdresler().length?`<label class="fld">📑 Kayıtlı adreslerden seç</label>
+          <select onchange="hzApplySavedAddr(${s.id},this.value)"><option value="">— Kayıtlı adres seç —</option>${aktifAdresler().map(a=>`<option value="${a.id}">${savedAddrLabel(a)}${(s.type==='alim'&&a.defPickup)||(s.type==='teslim'&&a.defDelivery)?' ⭐':''}</option>`).join('')}</select>`:`<label class="fld">Kayıtlı adres</label><div style="font-size:11.5px;color:var(--muted);padding:9px 0">Henüz kayıt yok — doldurup <b>kaydedin</b>.</div>`}</div>
+        <div style="display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap"><button class="btn sm sec" onclick="hzSaveStopAddr(${s.id})" title="Kayıtlı adreslere ekle">💾 Bu adresi kaydet</button><button class="btn sm ghost" onclick="openAddrMgr()" title="Kayıtlı adresleri yönet">📍 Adreslerim</button></div>
+      </div>
+      ${acField('hz'+s.id, s.addr, 'Mahalle, cadde, no… (yaz → öneri gelsin)')}
+      <div class="grid2" style="margin-top:10px">
+        <div><label class="fld">İlgili kişi <span style="color:var(--red)">*</span></label><input value="${s.kisi}" oninput="hzStopSet(${s.id},'kisi',this.value)" placeholder="Ad Soyad"></div>
+        <div><label class="fld">Telefon (maskelenir) <span style="color:var(--red)">*</span></label><input value="${s.tel}" maxlength="14" oninput="this.value=telFmt(this.value);hzStopSet(${s.id},'tel',this.value)" placeholder="05XX XXX XX XX"></div>
+      </div>
+    </div>`).join('')}
+    <div class="navrow" style="margin-top:12px">
+      <button class="btn sm sec" onclick="hzAddStop('alim')">＋ Alım noktası</button>
+      <button class="btn sm sec" onclick="hzAddStop('teslim')">＋ Teslim noktası</button>
+    </div>
+  </div></div>`; }
 function startHizli(){ H=freshHizli(); setNav(''); showView('hizli'); renderHizli(); }
 function hzModeLabel(){ return ['Hemen Al · Hemen Teslim','Gün İçi Slot','İleri Tarihli'][H.mode]; }
 function hzTelOk(t){ const d=(t||'').replace(/\D/g,''); return d.length===11&&d.startsWith('05'); }
@@ -1375,9 +1416,9 @@ function hzNav(d){
 function hzValidate(){
   if(H.step===1 && !H.veh){ toast('⚠️ Bir araç tipi seçin.'); return false; }
   if(H.step===2){
-    if(!H.a.addr||!H.b.addr){ toast('⚠️ Alım ve teslim adresini girin.'); return false; }
-    if(!H.a.kisi||!hzTelOk(H.a.tel)||!H.b.kisi||!hzTelOk(H.b.tel)){ toast('⚠️ İlgili kişi ve geçerli telefon (05XX XXX XX XX) zorunlu.'); return false; }
-    if(H.ikinciTeslim && (!H.c.addr||!H.c.kisi||!hzTelOk(H.c.tel))){ toast('⚠️ 2. teslim noktasını tamamlayın.'); return false; }
+    const bad=H.stops.find(s=>!s.addr); if(bad){ toast('⚠️ '+hzStopLabel(bad)+' adresini girin.'); return false; }
+    const badK=H.stops.find(s=>!s.kisi||!s.kisi.trim()); if(badK){ toast('⚠️ '+hzStopLabel(badK)+' için ilgili kişi zorunlu.'); return false; }
+    const badT=H.stops.find(s=>!hzTelOk(s.tel)); if(badT){ toast('⚠️ '+hzStopLabel(badT)+' için geçerli telefon zorunlu (05XX XXX XX XX).'); return false; }
     if(H.veh01){ if(!H.veh01Ok){ toast('⚠️ Araç sorumluluk bildirimini onaylayın.'); return false; } }
     else { const v=YUK_VEH.find(x=>x.id===H.veh); if(v.maxDesi<hzDesi()||v.maxKg<hzKg()){ H.capWarn=true; renderHizli(); return false; } }
   }
@@ -1386,7 +1427,7 @@ function hzValidate(){
 function hzPlace(){
   orderSeq++; const v=YUK_VEH.find(x=>x.id===H.veh);
   const o={ no:'EFSO-2026-'+String(orderSeq).padStart(6,'0'), cat:'yuk', catLabel:'Hızlı Sipariş', veh:H.veh, vehName:v.name, vehEmoji:v.ph,
-    modeLabel:hzModeLabel(), rtText:(H.a.addr||'—').split(',')[0]+' → '+(H.b.addr||'—').split(',')[0], km:12,
+    modeLabel:hzModeLabel(), rtText:hzRouteText(), km:12,
     itemsN:H.veh01?0:H.items.length, price:hzPrice(), meter:false,
     doluluk:H.veh01?0:Math.min(99,Math.round(hzDesi()/Math.max(1,v.maxDesi)*100)),
     status:'KuryeAraniyor', createdAt:nowStr(), courier:null, couriers:null, account:'bireysel',
@@ -1426,12 +1467,7 @@ function hzAddrBlock(n,label){ const o=H[n]; return `<div class="stop"><div clas
 function hzScreen2(){
   const v=YUK_VEH.find(x=>x.id===H.veh); const moto=H.veh==='moto';
   return `<div class="formwrap"><div>
-    <div class="panel"><div class="panel-h"><b>📍 Adres Bilgileri</b><span class="badge">A→B${H.ikinciTeslim?' + B→C':''}</span></div><div class="panel-b">
-      ${hzAddrBlock('a','🟢 Alım (A)')}
-      ${hzAddrBlock('b','🔴 Teslim (B)')}
-      <label class="chk" style="margin-top:6px"><input type="checkbox" ${H.ikinciTeslim?'checked':''} onchange="H.ikinciTeslim=this.checked;renderHizli()">➕ 2. teslim noktası (B→C)</label>
-      ${H.ikinciTeslim?hzAddrBlock('c','🔴 2. Teslim (C)'):''}
-    </div></div>
+    ${hzRoutePanel()}
     <div class="panel"><div class="panel-h"><b>📦 Kap Bilgileri</b><span class="badge">${moto?'Dosya / Koli / Diğer':'tüm kap cinsleri'}</span></div><div class="panel-b">
       <button class="btn ${H.veh01?'pri':'sec'}" style="width:100%;margin-bottom:10px;text-align:left" onclick="hzToggle01()">${H.veh01?'✓ ':''}01 — Yük detaylarını bilmiyorum (adet/ağırlık/ölçü girmeden devam et)</button>
       ${H.capWarn?hzCapWarnBox():(H.veh01?hzVehDetail():hzItems())}
@@ -1487,9 +1523,7 @@ function hzScreen3(){ const v=YUK_VEH.find(x=>x.id===H.veh);
   return `<div class="formwrap"><div><div class="panel"><div class="panel-h"><b>✅ Onay</b></div><div class="panel-b">
     <div class="price-line"><span class="muted">Hizmet</span><span>⚡ Hızlı Sipariş · ${hzModeLabel()}</span></div>
     <div class="price-line"><span class="muted">Araç</span><span>${v.ph} ${v.name}</span></div>
-    <div class="price-line"><span class="muted">Alım (A)</span><span>${(H.a.addr||'—')} · ${H.a.kisi}</span></div>
-    <div class="price-line"><span class="muted">Teslim (B)</span><span>${(H.b.addr||'—')} · ${H.b.kisi}</span></div>
-    ${H.ikinciTeslim?`<div class="price-line"><span class="muted">2. Teslim (C)</span><span>${(H.c.addr||'—')} · ${H.c.kisi}</span></div>`:''}
+    ${H.stops.map(s=>`<div class="price-line"><span class="muted">${hzStopLabel(s)}</span><span>${(s.addr||'—')} · ${s.kisi||''}</span></div>`).join('')}
     <div class="price-line"><span class="muted">Yük</span><span>${H.veh01?'01 — detay girilmedi (sorumluluk müşteride)':hzDesi()+' desi / '+hzKg()+' kg · '+H.items.length+' kap'}</span></div>
     <div class="price-line tot"><span>Toplam</span><span>${money(hzPrice())}</span></div>
     <div class="hintbox">Onayladığınızda sipariş oluşur ve eşleştirme başlar. Moto + Express → sistem en uygun kuryeyi otomatik atar (demo).</div>
