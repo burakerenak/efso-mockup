@@ -1365,7 +1365,7 @@ function routeText(){
    HIZLI SİPARİŞ — yeni akış: Zamanlama → Araç Tipi → Adres & Kap → Onay
    ========================================================= */
 let H=null;
-const HZ_STEPS=['Zamanlama','Araç Tipi','Adres & Kap','Onay'];
+const HZ_STEPS=['Zamanlama','Araç Tipi','Adres','Kap Bilgileri','Onay'];
 function freshHizli(){ const s=[{id:1,type:'alim',addr:'',firma:'',kisi:'',tel:''},{id:2,type:'teslim',addr:'',firma:'',kisi:'',tel:''}];
   s.forEach(st=>{ const d=defaultAddr(st.type); if(d) Object.assign(st,{addr:d.addr,firma:d.firma,kisi:d.kisi,tel:d.tel}); });
   return { step:0, mode:0, veh:null, veh01:false, veh01Ok:false, capWarn:false,
@@ -1435,10 +1435,12 @@ function hzNav(d){
 }
 function hzValidate(){
   if(H.step===1 && !H.veh){ toast('⚠️ Bir araç tipi seçin.'); return false; }
-  if(H.step===2){
+  if(H.step===2){   /* ADRES */
     const bad=H.stops.find(s=>!s.addr); if(bad){ toast('⚠️ '+hzStopLabel(bad)+' adresini girin.'); return false; }
     const badK=H.stops.find(s=>!s.kisi||!s.kisi.trim()); if(badK){ toast('⚠️ '+hzStopLabel(badK)+' için ilgili kişi zorunlu.'); return false; }
     const badT=H.stops.find(s=>!hzTelOk(s.tel)); if(badT){ toast('⚠️ '+hzStopLabel(badT)+' için geçerli telefon zorunlu (05XX XXX XX XX).'); return false; }
+  }
+  if(H.step===3){   /* KAP BİLGİLERİ */
     if(H.veh01){ if(!H.veh01Ok){ toast('⚠️ Araç sorumluluk bildirimini onaylayın.'); return false; } }
     else { const v=YUK_VEH.find(x=>x.id===H.veh); if(v.maxDesi<hzDesi()||v.maxKg<hzKg()){ H.capWarn=true; renderHizli(); return false; } }
   }
@@ -1461,7 +1463,7 @@ function renderHizli(){
   document.getElementById('hzSteps').innerHTML=HZ_STEPS.map((s,i)=>`<div class="step ${i<H.step?'done':i===H.step?'active':''}"><div class="dot">${i<H.step?'✓':i+1}</div><b>${s}</b>${i<HZ_STEPS.length-1?'<div class="bar"></div>':''}</div>`).join('');
   const v=H.veh?YUK_VEH.find(x=>x.id===H.veh):null;
   document.getElementById('hzTitle').textContent=v?`${v.ph} ${v.name} — ${hzModeLabel()}`:'⚡ Hızlı Sipariş';
-  document.getElementById('hzBody').innerHTML=[hzScreen0,hzScreen1,hzScreen2,hzScreen3][H.step]();
+  document.getElementById('hzBody').innerHTML=[hzScreen0,hzScreen1,hzScreen2,hzScreen3,hzScreen4][H.step]();
   document.getElementById('hzPrev').style.visibility=H.step===0?'hidden':'visible';
   document.getElementById('hzNext').textContent=H.step===HZ_STEPS.length-1?'✓ Siparişi Onayla':'Devam →';
 }
@@ -1484,10 +1486,12 @@ function hzAddrBlock(n,label){ const o=H[n]; return `<div class="stop"><div clas
     <div><label class="fld">İlgili kişi <span style="color:var(--red)">*</span></label><input value="${o.kisi}" oninput="hzSet('${n}','kisi',this.value)" placeholder="Ad Soyad"></div>
     <div><label class="fld">Telefon (maskelenir) <span style="color:var(--red)">*</span></label><input value="${o.tel}" maxlength="14" oninput="this.value=telFmt(this.value);hzSet('${n}','tel',this.value)" placeholder="05XX XXX XX XX"></div>
   </div></div>`; }
-function hzScreen2(){
-  const v=YUK_VEH.find(x=>x.id===H.veh); const moto=H.veh==='moto';
+function hzScreen2(){   /* ADRES */
+  return `<div class="formwrap"><div>${hzRoutePanel()}</div><div>${hzPricePanel()}</div></div>`;
+}
+function hzScreen3(){   /* KAP BİLGİLERİ */
+  const moto=H.veh==='moto';
   return `<div class="formwrap"><div>
-    ${hzRoutePanel()}
     <div class="panel"><div class="panel-h"><b>📦 Kap Bilgileri</b><span class="badge">${moto?'Dosya / Koli / Diğer':'tüm kap cinsleri'}</span></div><div class="panel-b">
       <div class="dchoice">
         <div class="dc ${!H.veh01?'on':''}" onclick="hzSet01(false)"><div class="dc-ic">✏️</div><div><b>Yük detaylarını biliyorum</b><p>Ben gireceğim — kap, adet, ağırlık${H.veh==='moto'?'':' (ve ölçü)'}.</p></div>${!H.veh01?'<span class="dc-tick">✓</span>':''}</div>
@@ -1548,7 +1552,7 @@ function hzPricePanel(){ const v=H.veh?YUK_VEH.find(x=>x.id===H.veh):null;
     <div class="hintbox">Fiyat onaydan önce kesindir (6502). Express ×${(MODES[H.mode]||MODES[0]).carpan.toFixed(2)}.</div>
   </div></div>`;
 }
-function hzScreen3(){ const v=YUK_VEH.find(x=>x.id===H.veh);
+function hzScreen4(){ const v=YUK_VEH.find(x=>x.id===H.veh);
   return `<div class="formwrap"><div><div class="panel"><div class="panel-h"><b>✅ Onay</b></div><div class="panel-b">
     <div class="price-line"><span class="muted">Hizmet</span><span>⚡ Hızlı Sipariş · ${hzModeLabel()}</span></div>
     <div class="price-line"><span class="muted">Araç</span><span>${v.ph} ${v.name}</span></div>
