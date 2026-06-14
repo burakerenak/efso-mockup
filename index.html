@@ -220,6 +220,9 @@
   .acctog button.on{background:var(--efso,#0ea5e9);color:#fff;border-color:transparent}
   .acctog .hint{font-size:11.5px;color:var(--muted)}
   .candrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;background:var(--soft)}
+  .vehchips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}
+  .vchip{border:1px solid var(--line);background:#fff;color:var(--ink);font-family:inherit;font-size:12px;font-weight:600;padding:7px 11px;border-radius:9px;cursor:pointer}
+  .vchip.on{background:var(--efso);color:#fff;border-color:transparent}
   .planwin{border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--soft)}
   .pw-h{font-weight:700;font-size:13px;margin-bottom:8px}
   .planrow{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px}
@@ -595,7 +598,6 @@ function validate(){
     if(feas().infeasible && !S.multiOk){ toast('🚫 Bu güzergah TEK ARAÇLA planlanamaz (giriş kısıtı + kapasite çelişkisi).\nÇoklu araç planını kabul edin, kısıtı düzeltin ya da operasyona gönderin.'); return false; }
   }
   if(S.v==='yuk' && S.step===2 && feas().infeasible && !S.multiOk){ toast('🚫 Tek araç çözümü yok — çoklu araç planı veya manuel planlama gerekli.'); return false; }
-  if(S.v==='yuk' && S.step===1 && S.vehOnly && !S.vehOnlyOk){ toast('⚠️ "Araç seçimi yeterli" yolunda sorumluluk onayı zorunludur.'); return false; }
   if((S.v!=='ev') && S.step===3 && S.mode===null){ toast('⚠️ Bir teslimat zamanı kartı seçin.'); return false; }
   if(S.v==='yuk' && S.step===3 && S.mode===2){
     if(!S.alimTarih){ toast('⚠️ İleri tarihli rezervasyon için alım tarihini seçin.'); return false; }
@@ -731,7 +733,20 @@ function vehListFor(){ let base=(ACCOUNT==='kurumsal'||showAllVeh)?YUK_VEH.slice
   const sv=suggestVeh(); const ids=new Set(base.map(v=>v.id));
   [sv.main,sv.alt].forEach(v=>{ if(v&&!ids.has(v.id)){ base.push(v); ids.add(v.id);} });
   return base.sort((a,b)=>YUK_VEH.indexOf(a)-YUK_VEH.indexOf(b)); }
-function catsForItem(it){ if(ACCOUNT==='kurumsal') return ITEM_CATS; return ITEM_CATS.filter(c=>BIREYSEL_CATS.includes(c.id)||c.id===it.cat); }
+const MOTO_CATS=['dosya','koli','diger'];   // Moto Kurye'de yalnız bu kap cinsleri
+function catsForItem(it){
+  if(S.vehOnly){   // Aracı biliyorum: Moto → sınırlı kap; diğer araçlar → tüm kap cinsleri
+    return S.veh==='moto' ? ITEM_CATS.filter(c=>MOTO_CATS.includes(c.id)||c.id===it.cat) : ITEM_CATS;
+  }
+  if(ACCOUNT==='kurumsal') return ITEM_CATS;
+  return ITEM_CATS.filter(c=>BIREYSEL_CATS.includes(c.id)||c.id===it.cat);
+}
+/* ölçü (en/boy/yükseklik) gösterilsin mi: Dosya hiç istemez; Aracı biliyorum+Moto → istemez (kap/adet/ağırlık yeter) */
+function showOlcu(it){ const c=catOf(it); if(c.skip) return false; if(S.vehOnly && S.veh==='moto') return false; return true; }
+/* Aracı biliyorum modunda araç seçimi — Moto'ya geçince uyumsuz kapları Dosya'ya çek */
+function setKnownVeh(id){ S.veh=id; S.vehManual=true;
+  if(id==='moto') S.items.forEach(it=>{ if(!MOTO_CATS.includes(it.cat)) it.cat='dosya'; });
+  render(); }
 function accountToggle(){ return `<div class="acctog">
   <button class="${ACCOUNT==='bireysel'?'on':''}" onclick="setAccount('bireysel')">👤 Bireysel</button>
   <button class="${ACCOUNT==='kurumsal'?'on':''}" onclick="setAccount('kurumsal')">🏢 Kurumsal</button>
@@ -1059,10 +1074,11 @@ function itemsPanel(){
   const errs=eslesmeHatalari();
   return `<div class="panel"><div class="panel-h"><b>📦 Ürünler + Nokta Eşleştirme</b><span class="badge">hatalı teslimat önleme</span></div>
   <div class="panel-b">
-    <label class="chk" style="margin:0 0 8px"><input type="checkbox" ${S.vehOnly?'checked':''} onchange="S.vehOnly=this.checked;render()">🚛 Aracı biliyorum — <b>araç seçimi yeterli</b> (büyük araç / komple kiralama, ürün detayı girmem)</label>
-    ${S.vehOnly?`<div class="hintbox">🚛 Komple araç kiralama yolu (Excel kuralı "01"): ürün detayı yerine bir sonraki adımda aracı siz seçersiniz. Yükleme uygunluğu sorumluluğu müşteridedir.
-      <label class="chk" style="margin-top:8px"><input type="checkbox" ${S.vehOnlyOk?'checked':''} onchange="S.vehOnlyOk=this.checked">📷 Yük fotoğrafını ekledim ve <b>kapasite/yükleme sorumluluğunu kabul ediyorum</b> (zorunlu)</label></div>`:''}
-    ${(!S.vehOnly)?`
+    <label class="chk" style="margin:0 0 8px"><input type="checkbox" ${S.vehOnly?'checked':''} onchange="S.vehOnly=this.checked;if(this.checked&&!S.veh)S.veh='moto';render()">🚛 <b>Aracı biliyorum</b> — aracı kendim seçeceğim ve <b>yükleme/kapasite sorumluluğunu kabul ediyorum</b></label>
+    ${S.vehOnly?`<div class="hintbox" style="margin-bottom:8px">🚛 Aracı kendiniz seçin; <b>kap ve ölçü alanları seçtiğiniz araca göre uyarlanır</b>. Yükleme uygunluğu/kapasite sorumluluğu sizdedir (foto operasyon keşfinde istenebilir).</div>
+      <label class="fld">Araç seçimi</label>
+      <div class="vehchips">${YUK_VEH.map(v=>`<button class="vchip ${(S.veh||'moto')===v.id?'on':''}" onclick="setKnownVeh('${v.id}')">${v.ph} ${v.name}</button>`).join('')}</div>`:''}
+    ${`
     ${S.items.map((it,ix)=>{ const c=catOf(it); return `
     <div class="stop"><div class="head"><div class="pin a">📦</div><b>Ürün ${ix+1} — ${c.ad} · ${itemDesi(it)} desi / ${itemKg(it)} kg</b>
       <button class="btn sm ghost" onclick="delItem(${it.id})" title="Ürünü sil">🗑</button></div>
@@ -1071,12 +1087,13 @@ function itemsPanel(){
         <div><label class="fld">Adet</label><input type="number" min="1" value="${it.adet}" onchange="uI(${it.id},'adet',Number(this.value))"></div>
         <div><label class="fld">Ağırlık (kg/adet)</label><input type="number" value="${it.kg}" placeholder="~${c.kg}" onchange="uI(${it.id},'kg',this.value)" ${c.skip?'disabled':''}></div>
       </div>
-      ${c.skip?`<div class="hintbox" style="margin-top:8px">📄 Dosya/Evrakta ölçü istenmez (eski kural) — adet yeterli.</div>`:`
+      ${c.skip?`<div class="hintbox" style="margin-top:8px">📄 Dosya/Evrakta ölçü istenmez (eski kural) — adet yeterli.</div>`
+      :(!showOlcu(it)?`<div class="hintbox" style="margin-top:8px">🛵 Moto Kurye — ölçü istenmez; <b>kap, adet ve ağırlık</b> yeterli.</div>`:`
       <div class="grid3" style="margin-top:8px">
         <div><label class="fld">En (cm) <span style="font-weight:400">ops.</span></label><input type="number" value="${it.en}" onchange="uI(${it.id},'en',this.value)"></div>
         <div><label class="fld">Boy (cm)</label><input type="number" value="${it.boy}" onchange="uI(${it.id},'boy',this.value)"></div>
         <div><label class="fld">Yükseklik (cm)</label><input type="number" value="${it.yuk}" onchange="uI(${it.id},'yuk',this.value)"></div>
-      </div>`}
+      </div>`)}
       <div class="grid2" style="margin-top:4px">
         <label class="chk"><input type="checkbox" ${it.kirilgan?'checked':''} onchange="uIq(${it.id},'kirilgan',this.checked)">🔻 Kırılgan</label>
         <label class="chk"><input type="checkbox" ${it.dik?'checked':''} onchange="uIq(${it.id},'dik',this.checked)">⬆️ Dik konulmalı</label>
@@ -1090,7 +1107,7 @@ function itemsPanel(){
     </div>`; }).join('')}
     <div class="navrow" style="margin-top:12px"><button class="btn sm sec" onclick="addItem()">＋ Ürün ekle</button>
       <div class="sp"></div><span style="font-size:11.5px;color:var(--muted);align-self:center">Ücrete esas: <b>max(desi, kg) = ${ucreteEsas()}</b></span></div>
-    ${eslesmeOzeti(errs)}`:''}
+    ${eslesmeOzeti(errs)}`}
   </div></div>`;
 }
 function eslesmeOzeti(errs){
