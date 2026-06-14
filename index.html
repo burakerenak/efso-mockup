@@ -1368,7 +1368,7 @@ let H=null;
 const HZ_STEPS=['Zamanlama','Araç Tipi','Adres','Kap Bilgileri','Onay'];
 function freshHizli(){ const s=[{id:1,type:'alim',addr:'',firma:'',kisi:'',tel:''},{id:2,type:'teslim',addr:'',firma:'',kisi:'',tel:''}];
   s.forEach(st=>{ const d=defaultAddr(st.type); if(d) Object.assign(st,{addr:d.addr,firma:d.firma,kisi:d.kisi,tel:d.tel}); });
-  return { step:0, mode:0, veh:null, veh01:false, veh01Ok:false, capWarn:false,
+  return { step:0, mode:0, veh:null, veh01:false, veh01Ok:false, capWarn:false, changeReturn:null,
   stops:s, nsid:3,
   items:[{id:1,cat:'dosya',adet:1,kg:'',en:'',boy:'',yuk:''}], niid:2 }; }
 function hzStopLabel(s){ const list=H.stops.filter(x=>x.type===s.type); const i=list.indexOf(s)+1; const t=s.type==='alim'?'Alım':'Teslim'; return t+(list.length>1?' '+i:''); }
@@ -1418,7 +1418,10 @@ function hzPrice(){ const t=TARIFF[H.veh]; if(!t) return 0; const m=MODES[H.mode
 function hzCats(it){ return H.veh==='moto'?ITEM_CATS.filter(c=>MOTO_CATS.includes(c.id)||c.id===it.cat):ITEM_CATS; }
 function kasaInfo(id){ const m={ moto:{kasa:'Top-case ~45×35×35 cm',kapi:'Üstten açılır çanta'}, courier:{kasa:'~180×120×120 cm',kapi:'Arka çift kanat'}, transit:{kasa:'~250×170×180 cm',kapi:'Arka + yan sürgü'}, kamyonet:{kasa:'~300×190×190 cm',kapi:'Arka kanat + lift ops.'} }; return m[id]||{kasa:'— (demo görsel)',kapi:'— (demo)'}; }
 
-function hzPickVeh(id){ H.veh=id; H.capWarn=false; if(id==='moto') H.items.forEach(it=>{ if(!MOTO_CATS.includes(it.cat)) it.cat='dosya'; }); renderHizli(); }
+function hzPickVeh(id){ H.veh=id; H.veh01Ok=false; H.capWarn=false; if(id==='moto') H.items.forEach(it=>{ if(!MOTO_CATS.includes(it.cat)) it.cat='dosya'; });
+  if(H.changeReturn!=null){ const r=H.changeReturn; H.changeReturn=null; H.step=r; toast('🚚 Araç değiştirildi: '+YUK_VEH.find(v=>v.id===id).name+' — yeni aracı onaylayın.'); }
+  renderHizli(); }
+function hzChangeVeh(){ H.changeReturn=H.step; H.step=1; renderHizli(); }
 function hzToggle01(){ H.veh01=!H.veh01; H.capWarn=false; renderHizli(); }
 function hzSet01(v){ H.veh01=v; H.capWarn=false; renderHizli(); }
 function hzItemCat(id,v){ const it=H.items.find(i=>i.id===id); it.cat=v; H.capWarn=false; renderHizli(); }
@@ -1430,6 +1433,7 @@ function hzRedirectVeh(){ const fit=YUK_VEH.find(v=>v.maxDesi>=hzDesi()&&v.maxKg
 
 function hzNav(d){
   if(d>0 && !hzValidate()) return;
+  if(H.changeReturn!=null && H.step===1){ const r=H.changeReturn; H.changeReturn=null; H.step=r; renderHizli(); return; }   // araç değiştirme sayfasından dön
   if(H.step===HZ_STEPS.length-1 && d>0){ hzPlace(); return; }
   H.step=Math.min(HZ_STEPS.length-1,Math.max(0,H.step+d)); renderHizli();
 }
@@ -1475,9 +1479,11 @@ function hzScreen0(){
   </div></div>`;
 }
 function hzScreen1(){
-  return `<div class="panel"><div class="panel-h"><b>🚚 Araç tipini seçin</b><span class="badge">ARAÇ TİPLERİ</span></div><div class="panel-b">
+  const chg=H.changeReturn!=null;
+  return `<div class="panel"><div class="panel-h"><b>🚚 ${chg?'Aracı değiştir':'Araç tipini seçin'}</b><span class="badge">ARAÇ TİPLERİ</span></div><div class="panel-b">
+    ${chg?`<div class="hintbox" style="border-color:#fde68a;background:#fffbeb">🔁 <b>Araç değiştiriyorsunuz.</b> Yeni aracı seçtiğinizde <b>otomatik olarak Kap Bilgileri'ne dönersiniz</b> — adres ve girdiğiniz bilgiler korunur. Vazgeçmek için <b>Geri</b>.</div>`:''}
     <div class="grid g3">${YUK_VEH.map(v=>`<div class="pick ${H.veh===v.id?'sel':''}" onclick="hzPickVeh('${v.id}')"><div class="emoji">${v.ph}</div><h3 style="font-size:14px">${v.name}</h3><p>${v.sub}</p><div class="specs">${v.specs.map(s=>`<span class="spec">${s}</span>`).join('')}</div></div>`).join('')}</div>
-    <div class="hintbox">Araç seçildikten sonra kap cinsleri ve ölçü alanları <b>seçtiğiniz araca göre</b> uyarlanır (Moto → Dosya/Koli/Diğer).</div>
+    ${chg?'':`<div class="hintbox">Araç seçildikten sonra kap cinsleri ve ölçü alanları <b>seçtiğiniz araca göre</b> uyarlanır (Moto → Dosya/Koli/Diğer).</div>`}
   </div></div>`;
 }
 function hzAddrBlock(n,label){ const o=H[n]; return `<div class="stop"><div class="head"><b>${label}</b></div>
@@ -1537,11 +1543,10 @@ function hzVehDetail(){ const v=YUK_VEH.find(x=>x.id===H.veh); const k=kasaInfo(
     <input type="checkbox" ${H.veh01Ok?'checked':''} onchange="H.veh01Ok=this.checked;renderHizli()">
     <span>Aracı gördüm, yüküme uygun. <b>Yükleme ve kapasite sorumluluğunu kabul ediyorum.</b></span>
   </label>
-  <details class="vehswap"${H.veh01Ok?'':' open'}>
-    <summary>🔁 Bu araç doğru değil mi? Başka araç seç</summary>
-    <p>Adres ve girdiğiniz bilgiler korunur — yeni aracı onaylamanız yeterli.</p>
-    <div class="vehchips">${YUK_VEH.map(x=>`<button class="vchip ${H.veh===x.id?'on':''}" onclick="hzPickVeh('${x.id}')">${x.ph} ${x.name}</button>`).join('')}</div>
-  </details>`;
+  <div class="navrow" style="margin-top:12px">
+    <button class="btn sec" onclick="hzChangeVeh()">🔁 Bu araç doğru değil — başka araç seç</button>
+    <span style="font-size:11.5px;color:var(--muted);align-self:center">Ayrı sayfada araç değiştirirsiniz; adres ve bilgileriniz korunur.</span>
+  </div>`;
 }
 function hzPricePanel(){ const v=H.veh?YUK_VEH.find(x=>x.id===H.veh):null;
   return `<div class="panel"><div class="panel-h"><b>💰 Fiyat</b><span class="badge">${hzModeLabel()}</span></div><div class="panel-b">
