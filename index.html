@@ -240,12 +240,12 @@
   .respbox{display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:13px 15px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:var(--soft);font-size:13.5px;line-height:1.4}
   .respbox input{margin-top:2px;flex:none;width:18px;height:18px;accent-color:var(--green)}
   .respbox.on{border-color:var(--green);background:#f0fdf4}
-  .btn-change{display:flex;align-items:center;gap:13px;width:100%;margin-top:14px;padding:14px 16px;border:1.5px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;font-family:inherit;text-align:left;transition:.14s}
-  .btn-change:hover{border-color:var(--efso);background:#f0fdff;transform:translateY(-1px);box-shadow:0 8px 20px rgba(14,165,183,.12)}
-  .btn-change .bc-ic{font-size:22px;flex:none}
+  .btn-change{display:flex;align-items:center;gap:13px;width:100%;margin-top:14px;padding:14px 16px;border:1.5px solid var(--efso);border-radius:12px;background:linear-gradient(135deg,#e0f7fa,#cffafe);cursor:pointer;font-family:inherit;text-align:left;transition:.14s}
+  .btn-change:hover{background:linear-gradient(135deg,#cffafe,#a5f3fc);transform:translateY(-1px);box-shadow:0 8px 20px rgba(14,165,183,.22)}
+  .btn-change .bc-ic{font-size:21px;flex:none;letter-spacing:-2px}
   .btn-change .bc-tx{flex:1;display:flex;flex-direction:column}
-  .btn-change .bc-tx b{font-size:13.5px;color:var(--ink)}
-  .btn-change .bc-tx small{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .btn-change .bc-tx b{font-size:14px;color:var(--efso-dark)}
+  .btn-change .bc-tx small{font-size:11.5px;color:#0e7490;margin-top:2px}
   .btn-change .bc-go{font-size:20px;font-weight:800;color:var(--efso-dark);flex:none}
   .vehswap{margin-top:12px}
   .vehswap summary{cursor:pointer;font-weight:700;font-size:13px;color:var(--efso-dark);padding:8px 0;list-style:none}
@@ -1551,8 +1551,8 @@ function hzVehDetail(){ const v=YUK_VEH.find(x=>x.id===H.veh); const k=kasaInfo(
     <span>Aracı gördüm, yüküme uygun. <b>Yükleme ve kapasite sorumluluğunu kabul ediyorum.</b></span>
   </label>
   <button class="btn-change" onclick="hzChangeVeh()">
-    <span class="bc-ic">🔁</span>
-    <span class="bc-tx"><b>Bu araç doğru değil mi? Başka araç seç</b><small>Ayrı sayfada araç seçersiniz; adres ve girdiğiniz bilgiler korunur.</small></span>
+    <span class="bc-ic">🚚🔁</span>
+    <span class="bc-tx"><b>Bu araç doğru değil mi?</b><small>Araç tipini değiştirmek istiyorsanız tıklayınız! Adres ve girdiğiniz bilgiler korunur.</small></span>
     <span class="bc-go">→</span>
   </button>`;
 }
